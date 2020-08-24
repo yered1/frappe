@@ -1,48 +1,16 @@
 from __future__ import unicode_literals
 
-import unittest
+import frappe, unittest
+from werkzeug.wrappers import Request
+from werkzeug.test import EnvironBuilder
 
-import frappe
 from frappe.website import render
-from frappe.website.utils import get_home_page
-from frappe.utils import set_request
 
+def set_request(**kwargs):
+	builder = EnvironBuilder(**kwargs)
+	frappe.local.request = Request(builder.get_environ())
 
 class TestWebsite(unittest.TestCase):
-	def test_home_page_for_role(self):
-		frappe.delete_doc_if_exists('User', 'test-user-for-home-page@example.com')
-		frappe.delete_doc_if_exists('Role', 'home-page-test')
-		frappe.delete_doc_if_exists('Web Page', 'home-page-test')
-		user = frappe.get_doc(dict(
-			doctype='User',
-			email='test-user-for-home-page@example.com',
-			first_name='test')).insert()
-
-		role = frappe.get_doc(dict(
-			doctype = 'Role',
-			role_name = 'home-page-test',
-			desk_access = 0,
-			home_page = '/home-page-test'
-		)).insert()
-
-		user.add_roles(role.name)
-		user.save()
-
-		frappe.set_user('test-user-for-home-page@example.com')
-		self.assertEqual(get_home_page(), 'home-page-test')
-
-		frappe.set_user('Administrator')
-		role.home_page = ''
-		role.save()
-
-		# home page via portal settings
-		frappe.db.set_value('Portal Settings', None, 'default_portal_home', 'test-portal-home')
-
-		frappe.set_user('test-user-for-home-page@example.com')
-		frappe.cache().hdel('home_page', frappe.session.user)
-		self.assertEqual(get_home_page(), 'test-portal-home')
-
-
 
 	def test_page_load(self):
 		frappe.set_user('Guest')
@@ -65,14 +33,6 @@ class TestWebsite(unittest.TestCase):
 			dict(source=r'/testfromregex.*', target=r'://testto2'),
 			dict(source=r'/testsub/(.*)', target=r'://testto3/\1')
 		]
-
-		website_settings = frappe.get_doc('Website Settings')
-		website_settings.append('route_redirects', {
-			'source': '/testsource',
-			'target': '/testtarget'
-		})
-		website_settings.save()
-
 		frappe.cache().delete_key('app_hooks')
 		frappe.cache().delete_key('website_redirects')
 
@@ -95,10 +55,6 @@ class TestWebsite(unittest.TestCase):
 		response = render.render()
 		self.assertEquals(response.status_code, 404)
 
-		set_request(method='GET', path='/testsource')
-		response = render.render()
-		self.assertEquals(response.status_code, 301)
-		self.assertEquals(response.headers.get('Location'), '/testtarget')
-
 		delattr(frappe.hooks, 'website_redirects')
 		frappe.cache().delete_key('app_hooks')
+

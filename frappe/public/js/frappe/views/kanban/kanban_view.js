@@ -27,21 +27,19 @@ frappe.views.KanbanView = class KanbanView extends frappe.views.ListView {
 	}
 
 	setup_defaults() {
-		return super.setup_defaults()
-			.then(() => {
-				this.board_name = frappe.get_route()[3];
-				this.page_title = this.board_name;
-				this.card_meta = this.get_card_meta();
+		super.setup_defaults();
+		this.board_name = frappe.get_route()[3];
+		this.page_title = this.board_name;
+		this.card_meta = this.get_card_meta();
 
-				this.menu_items.push({
-					label: __('Save filters'),
-					action: () => {
-						this.save_kanban_board_filters();
-					}
-				});
+		this.menu_items.push({
+			label: __('Save filters'),
+			action: () => {
+				this.save_kanban_board_filters();
+			}
+		});
 
-				return this.get_board();
-			});
+		return this.get_board();
 	}
 
 	get_board() {
@@ -59,6 +57,7 @@ frappe.views.KanbanView = class KanbanView extends frappe.views.ListView {
 
 	setup_view() {
 		this.setup_realtime_updates();
+
 	}
 
 	set_fields() {
@@ -71,10 +70,6 @@ frappe.views.KanbanView = class KanbanView extends frappe.views.ListView {
 		this.save_view_user_settings({
 			last_kanban_board: this.board_name
 		});
-	}
-
-	render_list() {
-
 	}
 
 	on_filter_change() {
@@ -110,11 +105,6 @@ frappe.views.KanbanView = class KanbanView extends frappe.views.ListView {
 			this.board.filters_array = filters;
 			this.on_filter_change();
 		});
-	}
-
-	get_fields() {
-		this.fields.push([this.board.field_name, this.board.reference_doctype]);
-		return super.get_fields();
 	}
 
 	render() {
@@ -160,7 +150,7 @@ frappe.views.KanbanView = class KanbanView extends frappe.views.ListView {
 		// quick entry
 		var mandatory = meta.fields.filter((df) => df.reqd && !doc[df.fieldname]);
 
-		if (mandatory.some(df => frappe.model.table_fields.includes(df.fieldtype)) || mandatory.length > 1) {
+		if (mandatory.some(df => df.fieldtype === 'Table') || mandatory.length > 1) {
 			quick_entry = true;
 		}
 

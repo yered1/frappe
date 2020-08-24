@@ -3,6 +3,7 @@
 
 from __future__ import unicode_literals, print_function
 
+no_sitemap = 1
 no_cache = 1
 base_template_path = "templates/www/desk.html"
 
@@ -12,9 +13,8 @@ from frappe import _
 import frappe.sessions
 
 def get_context(context):
-	if frappe.session.user == "Guest":
-		frappe.throw(_("Log in to access this page."), frappe.PermissionError)
-	elif frappe.db.get_value("User", frappe.session.user, "user_type") == "Website User":
+	if (frappe.session.user == "Guest" or
+		frappe.db.get_value("User", frappe.session.user, "user_type")=="Website User"):
 		frappe.throw(_("You are not permitted to access this page."), frappe.PermissionError)
 
 	hooks = frappe.get_hooks()
@@ -42,6 +42,8 @@ def get_context(context):
 		"sounds": hooks["sounds"],
 		"boot": boot if context.get("for_mobile") else boot_json,
 		"csrf_token": csrf_token,
+		"background_image": (boot.status != 'failed' and
+			(boot.user.background_image or boot.default_background_image) or None),
 		"google_analytics_id": frappe.conf.get("google_analytics_id"),
 		"mixpanel_id": frappe.conf.get("mixpanel_id")
 	})

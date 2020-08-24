@@ -441,16 +441,18 @@ frappe.PrintFormatBuilder = Class.extend({
 		});
 	},
 	setup_field_settings: function() {
-		this.page.main.find(".field-settings").on("click", e => {
-			const field = $(e.currentTarget).parent();
+		var me = this;
+		this.page.main.on("click", ".field-settings", function() {
+			var field = $(this).parent();
+
 			// new dialog
 			var d = new frappe.ui.Dialog({
 				title: "Set Properties",
 				fields: [
 					{
-						label: __("Label"),
-						fieldname: "label",
-						fieldtype: "Data"
+						label:__("Label"),
+						fieldname:"label",
+						fieldtype:"Data"
 					},
 					{
 						label: __("Align Value"),
@@ -483,7 +485,7 @@ frappe.PrintFormatBuilder = Class.extend({
 			});
 
 			// set current value
-			if (field.attr('data-align')) {
+			if(field.attr('data-align')) {
 				d.set_value('align', field.attr('data-align'));
 			} else {
 				d.set_value('align', 'left');
@@ -646,13 +648,6 @@ frappe.PrintFormatBuilder = Class.extend({
 				d.hide();
 			});
 
-			let update_column_count_message = () => {
-				// show a warning if user selects more than 10 columns for a table
-				let columns_count = $body.find("input:checked").length;
-				$body.find('.help-message').toggle(columns_count > 10);
-			}
-			update_column_count_message();
-
 			// enable / disable input based on selection
 			$body.on("click", "input[type='checkbox']", function() {
 				var disabled = !$(this).prop("checked"),
@@ -660,8 +655,6 @@ frappe.PrintFormatBuilder = Class.extend({
 
 				input.prop("disabled", disabled);
 				if(disabled) input.val("");
-
-				update_column_count_message();
 			});
 
 			d.show();
@@ -693,8 +686,7 @@ frappe.PrintFormatBuilder = Class.extend({
 				{
 					fieldname: "content",
 					fieldtype: "Code",
-					label: label,
-					options: "HTML"
+					label: label
 				},
 				{
 					fieldname: "help",
@@ -791,8 +783,6 @@ frappe.PrintFormatBuilder = Class.extend({
 				fieldname: "format_data",
 				value: JSON.stringify(data),
 			},
-			freeze: true,
-			btn: this.page.btn_primary,
 			callback: function(r) {
 				me.print_format = r.message;
 				frappe.show_alert({message: __("Saved"), indicator: 'green'});

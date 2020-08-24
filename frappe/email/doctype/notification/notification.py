@@ -7,15 +7,16 @@ import frappe
 import json, os
 from frappe import _
 from frappe.model.document import Document
-from frappe.core.doctype.role.role import get_info_based_on_role, get_user_info
-from frappe.utils import validate_email_address, nowdate, parse_val, is_html, add_to_date
+from frappe.core.doctype.role.role import get_emails_from_role
+from frappe.utils import validate_email_add, nowdate, parse_val, is_html
 from frappe.utils.jinja import validate_template
 from frappe.modules.utils import export_module_json, get_doc_module
 from six import string_types
 from frappe.integrations.doctype.slack_webhook_url.slack_webhook_url import send_slack_message
-from frappe.integrations.doctype.twilio_settings.twilio_settings import send_whatsapp_message
-from frappe.core.doctype.sms_settings.sms_settings import send_sms
-from frappe.desk.doctype.notification_log.notification_log import enqueue_create_notification
+
+# imports - third-party imports
+import pymysql
+from pymysql.constants import ER
 
 class Notification(Document):
 	def onload(self):
@@ -28,9 +29,7 @@ class Notification(Document):
 			self.name = self.subject
 
 	def validate(self):
-		if self.channel not in ('WhatsApp', 'SMS'):
-			validate_template(self.subject)
-
+		validate_template(self.subject)
 		validate_template(self.message)
 
 		if self.event in ("Days Before", "Days After") and not self.date_changed:
@@ -72,7 +71,7 @@ def get_context(context):
 		temp_doc = frappe.new_doc(self.document_type)
 		if self.condition:
 			try:
-				frappe.safe_eval(self.condition, None, get_context(temp_doc.as_dict()))
+				frappe.safe_eval(self.condition, None, get_context(temp_doc))
 			except Exception:
 				frappe.throw(_("The Condition '{0}' is invalid").format(self.condition))
 
@@ -92,19 +91,11 @@ def get_context(context):
 		if self.event=="Days After":
 			diff_days = -diff_days
 
-		reference_date = add_to_date(nowdate(), days=diff_days)
-		reference_date_start = reference_date + ' 00:00:00.000000'
-		reference_date_end = reference_date + ' 23:59:59.000000'
+		for name in frappe.db.sql_list("""select name from `tab{0}` where
+			DATE(`{1}`) = ADDDATE(DATE(%s), INTERVAL %s DAY)""".format(self.document_type,
+				self.date_changed), (nowdate(), diff_days or 0)):
 
-		doc_list = frappe.get_all(self.document_type,
-			fields='name',
-			filters=[
-				{ self.date_changed: ('>=', reference_date_start) },
-				{ self.date_changed: ('<=', reference_date_end) }
-			])
-
-		for d in doc_list:
-			doc = frappe.get_doc(self.document_type, d.name)
+			doc = frappe.get_doc(self.document_type, name)
 
 			if self.condition and not frappe.safe_eval(self.condition, None, get_context(doc)):
 				continue
@@ -123,61 +114,22 @@ def get_context(context):
 
 		if self.is_standard:
 			self.load_standard_properties(context)
-		try:
-			if self.channel == 'Email':
-				self.send_an_email(doc, context)
 
-			if self.channel == 'Slack':
-				self.send_a_slack_msg(doc, context)
+		if self.channel == 'Email':
+			self.send_an_email(doc, context)
 
-			if self.channel == 'WhatsApp':
-				self.send_whatsapp_msg(doc, context)
-
-			if self.channel == 'SMS':
-				self.send_sms(doc, context)
-
-			if self.channel == 'System Notification' or self.send_system_notification:
-				self.create_system_notification(doc, context)
-
-		except:
-			frappe.log_error(title='Failed to send notification', message=frappe.get_traceback())
+		if self.channel == 'Slack':
+			self.send_a_slack_msg(doc, context)
 
 		if self.set_property_after_alert:
 			allow_update = True
 			if doc.docstatus == 1 and not doc.meta.get_field(self.set_property_after_alert).allow_on_submit:
 				allow_update = False
-			try:
-				if allow_update and not doc.flags.in_notification_update:
-					doc.set(self.set_property_after_alert, self.property_value)
-					doc.flags.updater_reference = {
-						'doctype': self.doctype,
-						'docname': self.name,
-						'label': _('via Notification')
-					}
-					doc.flags.in_notification_update = True
-					doc.save(ignore_permissions=True)
-					doc.flags.in_notification_update = False
-			except Exception:
-				frappe.log_error(title='Document update failed', message=frappe.get_traceback())
 
-	def create_system_notification(self, doc, context):
-		subject = self.subject
-		if "{" in subject:
-			subject = frappe.render_template(self.subject, context)
-
-		attachments = self.get_attachment(doc)
-		recipients, cc, bcc = self.get_list_of_recipients(doc, context)
-		users = recipients + cc + bcc
-
-		notification_doc = {
-			'type': 'Alert',
-			'document_type': doc.doctype,
-			'document_name': doc.name,
-			'subject': subject,
-			'email_content': frappe.render_template(self.message, context),
-			'attached_file': attachments and json.dumps(attachments[0])
-		}
-		enqueue_create_notification(users, notification_doc)
+			if allow_update:
+				frappe.db.set_value(doc.doctype, doc.name, self.set_property_after_alert,
+					self.property_value, update_modified = False)
+				doc.set(self.set_property_after_alert, self.property_value)
 
 	def send_an_email(self, doc, context):
 		from email.utils import formataddr
@@ -187,8 +139,6 @@ def get_context(context):
 
 		attachments = self.get_attachment(doc)
 		recipients, cc, bcc = self.get_list_of_recipients(doc, context)
-		if not (recipients or cc or bcc):
-			return
 		sender = None
 		if self.sender and self.sender_email:
 			sender = formataddr((self.sender, self.sender_email))
@@ -201,29 +151,15 @@ def get_context(context):
 			reference_doctype = doc.doctype,
 			reference_name = doc.name,
 			attachments = attachments,
-			expose_recipients="header",
 			print_letterhead = ((attachments
 				and attachments[0].get('print_letterhead')) or False))
 
 	def send_a_slack_msg(self, doc, context):
-		send_slack_message(
-			webhook_url=self.slack_webhook_url,
-			message=frappe.render_template(self.message, context),
-			reference_doctype=doc.doctype,
-			reference_name=doc.name)
-
-	def send_whatsapp_msg(self, doc, context):
-		send_whatsapp_message(
-			sender=self.twilio_number,
-			receiver_list=self.get_receiver_list(doc, context),
-			message=frappe.render_template(self.message, context),
-		)
-
-	def send_sms(self, doc, context):
-		send_sms(
-			receiver_list=self.get_receiver_list(doc, context),
-			msg=frappe.render_template(self.message, context)
-		)
+			send_slack_message(
+				webhook_url=self.slack_webhook_url,
+				message=frappe.render_template(self.message, context),
+				reference_doctype = doc.doctype,
+				reference_name = doc.name)
 
 	def get_list_of_recipients(self, doc, context):
 		recipients = []
@@ -233,9 +169,9 @@ def get_context(context):
 			if recipient.condition:
 				if not frappe.safe_eval(recipient.condition, None, context):
 					continue
-			if recipient.receiver_by_document_field:
-				email_ids_value = doc.get(recipient.receiver_by_document_field)
-				if validate_email_address(email_ids_value):
+			if recipient.email_by_document_field:
+				email_ids_value = doc.get(recipient.email_by_document_field)
+				if validate_email_add(email_ids_value):
 					email_ids = email_ids_value.replace(",", "\n")
 					recipients = recipients + email_ids.split("\n")
 
@@ -256,8 +192,8 @@ def get_context(context):
 				bcc = bcc + recipient.bcc.split("\n")
 
 			#For sending emails to specified role
-			if recipient.receiver_by_role:
-				emails = get_info_based_on_role(recipient.receiver_by_role, 'email')
+			if recipient.email_by_role:
+				emails = get_emails_from_role(recipient.email_by_role)
 
 				for email in emails:
 					recipients = recipients + email.split("\n")
@@ -265,27 +201,6 @@ def get_context(context):
 		if not recipients and not cc and not bcc:
 			return None, None, None
 		return list(set(recipients)), list(set(cc)), list(set(bcc))
-
-	def get_receiver_list(self, doc, context):
-		''' return receiver list based on the doc field and role specified '''
-		receiver_list = []
-		for recipient in self.recipients:
-			if recipient.condition:
-				if not frappe.safe_eval(recipient.condition, None, context):
-					continue
-
-			# For sending messages to the owner's mobile phone number
-			if recipient.receiver_by_document_field == 'owner':
-				receiver_list.append(get_user_info(doc.get('owner'), 'mobile_no'))
-			# For sending messages to the number specified in the receiver field
-			elif recipient.receiver_by_document_field:
-				receiver_list.append(doc.get(recipient.receiver_by_document_field))
-
-			#For sending messages to specified role
-			if recipient.receiver_by_role:
-				receiver_list += get_info_based_on_role(recipient.receiver_by_role, 'mobile_no')
-
-		return receiver_list
 
 	def get_attachment(self, doc):
 		""" check print settings are attach the pdf """
@@ -298,7 +213,8 @@ def get_context(context):
 
 			# ignoring attachment as draft and cancelled documents are not allowed to print
 			status = "Draft" if doc.docstatus == 0 else "Cancelled"
-			frappe.throw(_("""Not allowed to attach {0} document, please enable Allow Print For {0} in Print Settings""").format(status),
+			frappe.throw(_("""Not allowed to attach {0} document,
+				please enable Allow Print For {0} in Print Settings""".format(status)),
 				title=_("Error in Notification"))
 		else:
 			return [{
@@ -353,14 +269,9 @@ def trigger_notifications(doc, method=None):
 		return
 
 	if method == "daily":
-		doc_list = frappe.get_all('Notification',
-			filters={
-				'event': ('in', ('Days Before', 'Days After')),
-				'enabled': 1
-			})
-		for d in doc_list:
-			alert = frappe.get_doc("Notification", d.name)
-
+		for alert in frappe.db.sql_list("""select name from `tabNotification`
+			where event in ('Days Before', 'Days After') and enabled=1"""):
+			alert = frappe.get_doc("Notification", alert)
 			for doc in alert.get_documents_for_today():
 				evaluate_alert(doc, alert, alert.event)
 				frappe.db.commit()
@@ -378,30 +289,30 @@ def evaluate_alert(doc, alert, event):
 				return
 
 		if event=="Value Change" and not doc.is_new():
-			if not frappe.db.has_column(doc.doctype, alert.value_changed):
-				alert.db_set('enabled', 0)
-				frappe.log_error('Notification {0} has been disabled due to missing field'.format(alert.name))
-				return
+			try:
+				db_value = frappe.db.get_value(doc.doctype, doc.name, alert.value_changed)
+			except pymysql.InternalError as e:
+				if e.args[0]== ER.BAD_FIELD_ERROR:
+					alert.db_set('enabled', 0)
+					frappe.log_error('Notification {0} has been disabled due to missing field'.format(alert.name))
+					return
 
-			doc_before_save = doc.get_doc_before_save()
-			field_value_before_save = doc_before_save.get(alert.value_changed) if doc_before_save else None
+			db_value = parse_val(db_value)
+			if (doc.get(alert.value_changed) == db_value) or \
+				(not db_value and not doc.get(alert.value_changed)):
 
-			field_value_before_save = parse_val(field_value_before_save)
-			if (doc.get(alert.value_changed) == field_value_before_save):
-				# value not changed
-				return
+				return # value not changed
 
 		if event != "Value Change" and not doc.is_new():
 			# reload the doc for the latest values & comments,
 			# except for validate type event.
-			doc.reload()
+			doc = frappe.get_doc(doc.doctype, doc.name)
 		alert.send(doc)
 	except TemplateError:
 		frappe.throw(_("Error while evaluating Notification {0}. Please fix your template.").format(alert))
 	except Exception as e:
-		error_log = frappe.log_error(message=frappe.get_traceback(), title=str(e))
-		frappe.throw(_("Error in Notification: {}").format(
-			frappe.utils.get_link_to_form('Error Log', error_log.name)))
+		frappe.log_error(message=frappe.get_traceback(), title=str(e))
+		frappe.throw(_("Error in Notification"))
 
 def get_context(doc):
-	return {"doc": doc, "nowdate": nowdate, "frappe": frappe._dict(utils=frappe.utils)}
+	return {"doc": doc, "nowdate": nowdate, "frappe.utils": frappe.utils}

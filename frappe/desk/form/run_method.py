@@ -31,14 +31,7 @@ def runserverobj(method, docs=None, dt=None, dn=None, arg=None, args=None):
 		except ValueError:
 			args = args
 
-		try:
-			fnargs, varargs, varkw, defaults = inspect.getargspec(getattr(doc, method))
-		except ValueError:
-			fnargs = inspect.getfullargspec(getattr(doc, method)).args
-			varargs = inspect.getfullargspec(getattr(doc, method)).varargs
-			varkw = inspect.getfullargspec(getattr(doc, method)).varkw
-			defaults = inspect.getfullargspec(getattr(doc, method)).defaults
-
+		fnargs, varargs, varkw, defaults = inspect.getargspec(getattr(doc, method))
 		if not fnargs or (len(fnargs)==1 and fnargs[0]=="self"):
 			r = doc.run_method(method)
 

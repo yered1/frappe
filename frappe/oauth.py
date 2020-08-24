@@ -4,7 +4,6 @@ import pytz
 
 from frappe import _
 from frappe.auth import LoginManager
-from http import cookies
 from oauthlib.oauth2.rfc6749.tokens import BearerToken
 from oauthlib.oauth2.rfc6749.grant_types import AuthorizationCodeGrant, ImplicitGrant, ResourceOwnerPasswordCredentialsGrant, ClientCredentialsGrant,  RefreshTokenGrant
 from oauthlib.oauth2 import RequestValidator
@@ -131,12 +130,15 @@ class OAuthWebRequestValidator(RequestValidator):
 		oac.scopes = get_url_delimiter().join(request.scopes)
 		oac.redirect_uri_bound_to_authorization_code = request.redirect_uri
 		oac.client = client_id
-		oac.user = unquote(cookie_dict['user_id'].value)
+		oac.user = unquote(cookie_dict['user_id'])
 		oac.authorization_code = code['code']
 		oac.save(ignore_permissions=True)
 		frappe.db.commit()
 
 	def authenticate_client(self, request, *args, **kwargs):
+
+		cookie_dict = get_cookie_dict_from_headers(request)
+
 		#Get ClientID in URL
 		if request.client_id:
 			oc = frappe.get_doc("OAuth Client", request.client_id)
@@ -153,9 +155,7 @@ class OAuthWebRequestValidator(RequestValidator):
 		except Exception as e:
 			print("Failed body authentication: Application %s does not exist".format(cid=request.client_id))
 
-		cookie_dict = get_cookie_dict_from_headers(request)
-		user_id = unquote(cookie_dict['user_id']) if 'user_id' in cookie_dict else "Guest"
-		return frappe.session.user == user_id
+		return frappe.session.user == unquote(cookie_dict.get('user_id', "Guest"))
 
 	def authenticate_client_id(self, client_id, request, *args, **kwargs):
 		cli_id = frappe.db.get_value('OAuth Client', client_id, 'name')
@@ -400,10 +400,13 @@ class OAuthWebRequestValidator(RequestValidator):
 		return True
 
 def get_cookie_dict_from_headers(r):
-	cookie = cookies.BaseCookie()
 	if r.headers.get('Cookie'):
-		cookie.load(r.headers.get('Cookie'))
-	return cookie
+		cookie = r.headers.get('Cookie')
+		cookie = cookie.split("; ")
+		cookie_dict = {k:v for k,v in (x.split('=') for x in cookie)}
+		return cookie_dict
+	else:
+		return {}
 
 def calculate_at_hash(access_token, hash_alg):
 	"""Helper method for calculating an access token

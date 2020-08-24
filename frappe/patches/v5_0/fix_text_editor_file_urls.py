@@ -14,7 +14,7 @@ def execute():
 
 		try:
 			result = frappe.get_all(opts.parent, fields=["name", opts.fieldname])
-		except frappe.db.SQLError:
+		except frappe.SQLError as e:
 			# bypass single tables
 			continue
 

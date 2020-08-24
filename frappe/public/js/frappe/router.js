@@ -4,7 +4,6 @@
 // route urls to their virtual pages
 
 // re-route map (for rename)
-frappe.provide('frappe.views');
 frappe.re_route = {"#login": ""};
 frappe.route_titles = {};
 frappe.route_flags = {};
@@ -12,13 +11,8 @@ frappe.route_history = [];
 frappe.view_factory = {};
 frappe.view_factories = [];
 frappe.route_options = null;
-frappe.route_hooks = {};
 
 frappe.route = function() {
-
-	// Application is not yet initiated
-	if (!frappe.app) return;
-
 	if(frappe.re_route[window.location.hash] !== undefined) {
 		// after saving a doc, for example,
 		// "New DocType 1" and the renamed "TestDocType", both exist in history
@@ -47,11 +41,8 @@ frappe.route = function() {
 
 	if(route[0]) {
 		const title_cased_route = frappe.utils.to_title_case(route[0]);
-		if (title_cased_route === 'Workspace') {
-			frappe.views.pageview.show('');
-		}
 
-		if (route[1] && frappe.views[title_cased_route + "Factory"]) {
+		if(route[1] && frappe.views[title_cased_route + "Factory"]) {
 			// has a view generator, generate!
 			if(!frappe.view_factory[title_cased_route]) {
 				frappe.view_factory[title_cased_route] = new frappe.views[title_cased_route + "Factory"]();
@@ -61,9 +52,7 @@ frappe.route = function() {
 		} else {
 			// show page
 			const route_name = frappe.utils.xss_sanitise(route[0]);
-			if (frappe.views.pageview) {
-				frappe.views.pageview.show(route_name);
-			}
+			frappe.views.pageview.show(route_name);
 		}
 	} else {
 		// Show desk
@@ -142,7 +131,7 @@ frappe.get_raw_route_str = function(route) {
 }
 
 frappe.get_route_str = function(route) {
-	var rawRoute = frappe.get_raw_route_str(route);
+	var rawRoute = frappe.get_raw_route_str()
 	route = $.map(rawRoute.split('/'), frappe._decode_str).join('/');
 
 	return route;
@@ -171,10 +160,9 @@ frappe.set_route = function() {
 		window.location.hash = route;
 
 		// Set favicon (app.js)
-		frappe.provide('frappe.app');
 		frappe.app.set_favicon && frappe.app.set_favicon();
 		setTimeout(() => {
-			frappe.after_ajax && frappe.after_ajax(() => {
+			frappe.after_ajax(() => {
 				resolve();
 			});
 		}, 100);
@@ -187,9 +175,6 @@ frappe.set_re_route = function() {
 	frappe.re_route[tmp] = window.location.hash;
 };
 
-frappe.has_route_options = function() {
-	return Boolean(Object.keys(frappe.route_options || {}).length);
-}
 
 frappe._cur_route = null;
 
@@ -201,12 +186,8 @@ $(window).on('hashchange', function() {
 		return;
 
 	// hide open dialog
-	if(window.cur_dialog) {
-		if (!cur_dialog.minimizable) {
-			cur_dialog.hide();
-		} else if (!cur_dialog.is_minimized) {
-			cur_dialog.toggle_minimize();
-		}
+	if(window.cur_dialog && cur_dialog.hide_on_page_refresh) {
+		cur_dialog.hide();
 	}
 
 	frappe.route();

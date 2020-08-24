@@ -1,6 +1,4 @@
-frappe.ui.form.ControlGeolocation = frappe.ui.form.ControlData.extend({
-	horizontal: false,
-
+frappe.ui.form.ControlGeolocation = frappe.ui.form.ControlCode.extend({
 	make_wrapper() {
 		// Create the elements for map area
 		this._super();

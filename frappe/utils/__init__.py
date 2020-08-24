@@ -6,12 +6,10 @@
 from __future__ import unicode_literals, print_function
 from werkzeug.test import Client
 import os, re, sys, json, hashlib, requests, traceback
-import functools
 from .html_utils import sanitize_html
 import frappe
 from frappe.utils.identicon import Identicon
 from email.utils import parseaddr, formataddr
-from email.header import decode_header, make_header
 # utility functions like cint, int, flt, etc.
 from frappe.utils.data import *
 from six.moves.urllib.parse import quote
@@ -61,14 +59,13 @@ def get_email_address(user=None):
 	if not user:
 		user = frappe.session.user
 
-	return frappe.db.get_value("User", user, "email")
+	return frappe.db.get_value("User", user, ["email"], as_dict=True).get("email")
 
-def get_formatted_email(user, mail=None):
+def get_formatted_email(user):
 	"""get Email Address of user formatted as: `John Doe <johndoe@example.com>`"""
 	fullname = get_fullname(user)
-	if not mail:
-		mail = get_email_address(user)
-	return cstr(make_header(decode_header(formataddr((fullname, mail)))))
+	mail = get_email_address(user)
+	return formataddr((fullname, mail))
 
 def extract_email_id(email):
 	"""fetch only the email part of the Email Address"""
@@ -77,34 +74,11 @@ def extract_email_id(email):
 		email_id = email_id.decode("utf-8", "ignore")
 	return email_id
 
-def validate_phone_number(phone_number, throw=False):
-	"""Returns True if valid phone number"""
-	if not phone_number:
-		return False
-
-	phone_number = phone_number.strip()
-	match = re.match(r"([0-9\ \+\_\-\,\.\*\#\(\)]){1,20}$", phone_number)
-
-	if not match and throw:
-		frappe.throw(frappe._("{0} is not a valid Phone Number").format(phone_number), frappe.InvalidPhoneNumberError)
-
-	return bool(match)
-
-def validate_name(name, throw=False):
-	"""Returns True if the name is valid
-	valid names may have unicode and ascii characters, dash, quotes, numbers
-	anything else is considered invalid
+def validate_email_add(email_str, throw=False):
 	"""
-	if not name:
-		return False
-
-	name = name.strip()
-	match = re.match(r"^[\w][\w\'\-]*([ \w][\w\'\-]+)*$", name)
-
-	if not match and throw:
-		frappe.throw(frappe._("{0} is not a valid Name").format(name), frappe.InvalidNameError)
-
-	return bool(match)
+	validate_email_add will be renamed to the validate_email_address in v12
+	"""
+	return validate_email_address(email_str, throw=False)
 
 def validate_email_address(email_str, throw=False):
 	"""Validates the email string"""
@@ -123,15 +97,15 @@ def validate_email_address(email_str, throw=False):
 			_valid = False
 
 		else:
-			email_id = extract_email_id(e)
-			match = re.match("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", email_id.lower()) if email_id else None
+			e = extract_email_id(e)
+			match = re.match("[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", e.lower()) if e else None
 
 			if not match:
 				_valid = False
 			else:
 				matched = match.group(0)
 				if match:
-					match = matched==email_id.lower()
+					match = matched==e.lower()
 
 		if not _valid:
 			if throw:
@@ -342,12 +316,6 @@ def get_backups_path():
 def get_request_site_address(full_address=False):
 	return get_url(full_address=full_address)
 
-def get_site_url(site):
-	return 'http://{site}:{port}'.format(
-		site=site,
-		port=frappe.get_conf(site).webserver_port
-	)
-
 def encode_dict(d, encoding="utf-8"):
 	for key in d:
 		if isinstance(d[key], string_types) and isinstance(d[key], text_type):
@@ -362,7 +330,6 @@ def decode_dict(d, encoding="utf-8"):
 
 	return d
 
-@functools.lru_cache()
 def get_site_name(hostname):
 	return hostname.split(':')[0]
 
@@ -401,19 +368,10 @@ def call_hook_method(hook, *args, **kwargs):
 def update_progress_bar(txt, i, l):
 	if not getattr(frappe.local, 'request', None):
 		lt = len(txt)
-		try:
-			col = 40 if os.get_terminal_size().columns > 80 else 20
-		except OSError:
-			# in case function isn't being called from a terminal
-			col = 40
-
 		if lt < 36:
 			txt = txt + " "*(36-lt)
-
-		complete = int(float(i+1) / l * col)
-		completion_bar = ("=" * complete).ljust(col, ' ')
-		percent_complete = str(int(float(i+1) / l * 100))
-		sys.stdout.write("\r{0}: [{1}] {2}%".format(txt, completion_bar, percent_complete))
+		complete = int(float(i+1) / l * 40)
+		sys.stdout.write("\r{0}: [{1}{2}]".format(txt, "="*complete, " "*(40-complete)))
 		sys.stdout.flush()
 
 def get_html_format(print_path):
@@ -491,7 +449,7 @@ def watch(path, handler=None, debug=True):
 	observer.join()
 
 def markdown(text, sanitize=True, linkify=True):
-	html = text if is_html(text) else frappe.utils.md_to_html(text)
+	html = frappe.utils.md_to_html(text)
 
 	if sanitize:
 		html = html.replace("<!-- markdown -->", "")
@@ -502,7 +460,7 @@ def markdown(text, sanitize=True, linkify=True):
 def sanitize_email(emails):
 	sanitized = []
 	for e in split_emails(emails):
-		if not validate_email_address(e):
+		if not validate_email_add(e):
 			continue
 
 		full_name, email_id = parse_addr(e)
@@ -615,9 +573,7 @@ def parse_json(val):
 	Parses json if string else return
 	"""
 	if isinstance(val, string_types):
-		val = json.loads(val)
-	if isinstance(val, dict):
-		val = frappe._dict(val)
+		return json.loads(val)
 	return val
 
 def cast_fieldtype(fieldtype, value):
@@ -693,37 +649,3 @@ def gzip_decompress(data):
 	"""
 	with GzipFile(fileobj=io.BytesIO(data)) as f:
 		return f.read()
-
-def get_safe_filters(filters):
-	try:
-		filters = json.loads(filters)
-
-		if isinstance(filters, (integer_types, float)):
-			filters = frappe.as_unicode(filters)
-
-	except (TypeError, ValueError):
-		# filters are not passed, not json
-		pass
-
-	return filters
-
-def create_batch(iterable, batch_size):
-	"""
-	Convert an iterable to multiple batches of constant size of batch_size
-	"""
-	total_count = len(iterable)
-	for i in range(0, total_count, batch_size):
-		yield iterable[i:min(i + batch_size, total_count)]
-
-def set_request(**kwargs):
-	from werkzeug.test import EnvironBuilder
-	from werkzeug.wrappers import Request
-	builder = EnvironBuilder(**kwargs)
-	frappe.local.request = Request(builder.get_environ())
-
-def get_html_for_route(route):
-	from frappe.website import render
-	set_request(method='GET', path=route)
-	response = render.render()
-	html = frappe.safe_decode(response.get_data())
-	return html

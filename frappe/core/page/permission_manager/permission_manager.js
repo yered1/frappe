@@ -45,7 +45,7 @@ frappe.PermissionEngine = Class.extend({
 	setup_page: function() {
 		var me = this;
 		this.doctype_select
-			= this.wrapper.page.add_select(__("Document Type"),
+			= this.wrapper.page.add_select(__("Document Types"),
 				[{value: "", label: __("Select Document Type")+"..."}].concat(this.options.doctypes))
 				.change(function() {
 					frappe.set_route("permission-manager", $(this).val());
@@ -217,7 +217,6 @@ frappe.PermissionEngine = Class.extend({
 
 			me.rights.forEach(r => {
 				if (!d.is_submittable && ['submit', 'cancel', 'amend'].includes(r)) return;
-				if (d.in_create && ['create', 'write', 'delete'].includes(r)) return;
 				me.add_check(perm_container, d, r);
 			});
 

@@ -16,12 +16,7 @@ from frappe.desk.form.load import get_meta_bundle
 from frappe.utils.change_log import get_versions
 from frappe.translate import get_lang_dict
 from frappe.email.inbox import get_email_accounts
-from frappe.social.doctype.energy_point_settings.energy_point_settings import is_energy_point_enabled
-from frappe.website.doctype.web_page_view.web_page_view import is_tracking_enabled
-from frappe.social.doctype.energy_point_log.energy_point_log import get_energy_points
-from frappe.model.base_document import get_controller
-from frappe.social.doctype.post.post import frequently_visited_links
-from frappe.core.doctype.navbar_settings.navbar_settings import get_navbar_settings
+from frappe.core.doctype.feedback_trigger.feedback_trigger import get_enabled_feedback_trigger
 
 def get_bootinfo():
 	"""build and return boot info"""
@@ -44,7 +39,7 @@ def get_bootinfo():
 
 	bootinfo.modules = {}
 	bootinfo.module_list = []
-	load_desktop_data(bootinfo)
+	load_desktop_icons(bootinfo)
 	bootinfo.letter_heads = get_letter_heads()
 	bootinfo.active_domains = frappe.get_active_domains()
 	bootinfo.all_domains = [d.get("name") for d in frappe.get_all("Domain")]
@@ -60,7 +55,6 @@ def get_bootinfo():
 	load_print(bootinfo, doclist)
 	doclist.extend(get_meta_bundle("Page"))
 	bootinfo.home_folder = frappe.db.get_value("File", {"is_home_folder": 1})
-	bootinfo.navbar_settings = get_navbar_settings()
 
 	# ipinfo
 	if frappe.session.data.get('ipinfo'):
@@ -80,14 +74,10 @@ def get_bootinfo():
 	bootinfo.calendars = sorted(frappe.get_hooks("calendars"))
 	bootinfo.treeviews = frappe.get_hooks("treeviews") or []
 	bootinfo.lang_dict = get_lang_dict()
+	bootinfo.feedback_triggers = get_enabled_feedback_trigger()
+	bootinfo.gsuite_enabled = get_gsuite_status()
 	bootinfo.success_action = get_success_action()
 	bootinfo.update(get_email_accounts(user=frappe.session.user))
-	bootinfo.energy_points_enabled = is_energy_point_enabled()
-	bootinfo.website_tracking_enabled = is_tracking_enabled()
-	bootinfo.points = get_energy_points(frappe.session.user)
-	bootinfo.frequently_visited_links = frequently_visited_links()
-	bootinfo.link_preview_doctypes = get_link_preview_doctypes()
-	bootinfo.additional_filters_config = get_additional_filters_from_hooks()
 
 	return bootinfo
 
@@ -105,69 +95,55 @@ def load_conf_settings(bootinfo):
 	for key in ('developer_mode', 'socketio_port', 'file_watcher_port'):
 		if key in conf: bootinfo[key] = conf.get(key)
 
-def load_desktop_data(bootinfo):
-	from frappe.config import get_modules_from_all_apps_for_user
-	from frappe.desk.desktop import get_desk_sidebar_items
-	bootinfo.allowed_modules = get_modules_from_all_apps_for_user()
-	bootinfo.allowed_workspaces = get_desk_sidebar_items(flatten=True, cache=False)
-	bootinfo.module_page_map = get_controller("Desk Page").get_module_page_map()
-	bootinfo.dashboards = frappe.get_all("Dashboard")
+def load_desktop_icons(bootinfo):
+	from frappe.desk.doctype.desktop_icon.desktop_icon import get_desktop_icons
+	bootinfo.desktop_icons = get_desktop_icons()
 
-def get_allowed_pages(cache=False):
-	return get_user_pages_or_reports('Page', cache=cache)
+def get_allowed_pages():
+	return get_user_pages_or_reports('Page')
 
-def get_allowed_reports(cache=False):
-	return get_user_pages_or_reports('Report', cache=cache)
+def get_allowed_reports():
+	return get_user_pages_or_reports('Report')
 
-def get_user_pages_or_reports(parent, cache=False):
-	_cache = frappe.cache()
-
-	if cache:
-		has_role = _cache.get_value('has_role:' + parent, user=frappe.session.user)
-		if has_role:
-			return has_role
-
+def get_user_pages_or_reports(parent):
 	roles = frappe.get_roles()
 	has_role = {}
 	column = get_column(parent)
 
 	# get pages or reports set on custom role
-	pages_with_custom_roles = frappe.db.sql("""
+	custom_roles = frappe.db.sql("""
 		select
 			`tabCustom Role`.{field} as name,
 			`tabCustom Role`.modified,
-			`tabCustom Role`.ref_doctype,
-			{column}
-		from `tabCustom Role`, `tabHas Role`, `tab{parent}`
+			`tabCustom Role`.ref_doctype
+		from `tabCustom Role`, `tabHas Role`
 		where
 			`tabHas Role`.parent = `tabCustom Role`.name
-			and `tab{parent}`.name = `tabCustom Role`.{field}
 			and `tabCustom Role`.{field} is not null
 			and `tabHas Role`.role in ({roles})
-	""".format(field=parent.lower(), parent=parent, column=column,
-		roles = ', '.join(['%s']*len(roles))), roles, as_dict=1)
+	""".format(field=parent.lower(), roles = ', '.join(['%s']*len(roles))), roles, as_dict=1)
 
-	for p in pages_with_custom_roles:
-		has_role[p.name] = {"modified":p.modified, "title": p.title, "ref_doctype": p.ref_doctype}
+	for p in custom_roles:
+		has_role[p.name] = {"modified":p.modified, "title": p.name, "ref_doctype": p.ref_doctype}
 
-	pages_with_standard_roles = frappe.db.sql("""
+	standard_roles = frappe.db.sql("""
 		select distinct
-			`tab{parent}`.name as name,
-			`tab{parent}`.modified,
+			tab{parent}.name,
+			tab{parent}.modified,
 			{column}
 		from `tabHas Role`, `tab{parent}`
 		where
 			`tabHas Role`.role in ({roles})
 			and `tabHas Role`.parent = `tab{parent}`.name
-			and `tab{parent}`.`name` not in (
+			and tab{parent}.name not in (
 				select `tabCustom Role`.{field} from `tabCustom Role`
 				where `tabCustom Role`.{field} is not null)
 			{condition}
 		""".format(parent=parent, column=column, roles = ', '.join(['%s']*len(roles)),
-			field=parent.lower(), condition="and `tabReport`.disabled=0" if parent == "Report" else ""),
+			field=parent.lower(), condition="and tabReport.disabled=0" if parent == "Report" else ""),
 			roles, as_dict=True)
 
-	for p in pages_with_standard_roles:
+	for p in standard_roles:
 		if p.name not in has_role:
 			has_role[p.name] = {"modified":p.modified, "title": p.title}
 			if parent == "Report":
@@ -181,7 +157,7 @@ def get_user_pages_or_reports(parent, cache=False):
 			from `tab{parent}`
 			where
 				(select count(*) from `tabHas Role`
-				where `tabHas Role`.parent=`tab{parent}`.`name`) = 0
+				where `tabHas Role`.parent=tab{parent}.name) = 0
 		""".format(parent=parent, column=column), as_dict=1)
 
 		for p in pages_with_no_roles:
@@ -189,22 +165,15 @@ def get_user_pages_or_reports(parent, cache=False):
 				has_role[p.name] = {"modified": p.modified, "title": p.title}
 
 	elif parent == "Report":
-		reports = frappe.get_all("Report",
-			fields=["name", "report_type"],
-			filters={"name": ("in", has_role.keys())},
-			ignore_ifnull=True
-		)
-		for report in reports:
-			has_role[report.name]["report_type"] = report.report_type
+		for report_name in has_role:
+			has_role[report_name]["report_type"] = frappe.db.get_value("Report", report_name, "report_type")
 
-	# Expire every six hours
-	_cache.set_value('has_role:' + parent, has_role, frappe.session.user, 21600)
 	return has_role
 
 def get_column(doctype):
 	column = "`tabPage`.title as title"
 	if doctype == "Report":
-		column = "`tabReport`.`name` as title, `tabReport`.ref_doctype, `tabReport`.report_type"
+		column = "`tabReport`.name as name, `tabReport`.name as title, `tabReport`.ref_doctype, `tabReport`.report_type"
 
 	return column
 
@@ -224,9 +193,9 @@ def load_translations(bootinfo):
 
 def get_fullnames():
 	"""map of user fullnames"""
-	ret = frappe.db.sql("""select `name`, full_name as fullname,
-		user_image as image, gender, email, username, bio, location, interest, banner_image, allowed_in_mentions
-		from tabUser where enabled=1 and user_type!='Website User'""", as_dict=1)
+	ret = frappe.db.sql("""select name, full_name as fullname,
+			user_image as image, gender, email, username
+		from tabUser where enabled=1 and user_type!="Website User" """, as_dict=1)
 
 	d = {}
 	for r in ret:
@@ -254,7 +223,7 @@ def add_home_page(bootinfo, docs):
 	except (frappe.DoesNotExistError, frappe.PermissionError):
 		if frappe.message_log:
 			frappe.message_log.pop()
-		page = frappe.desk.desk_page.get('workspace')
+		page = frappe.desk.desk_page.get('desktop')
 
 	bootinfo['home_page'] = page.name
 	docs.append(page)
@@ -276,35 +245,13 @@ def load_print_css(bootinfo, print_settings):
 	bootinfo.print_css = frappe.www.printview.get_print_style(print_settings.print_style or "Modern", for_legacy=True)
 
 def get_unseen_notes():
-	return frappe.db.sql('''select `name`, title, content, notify_on_every_login from `tabNote` where notify_on_login=1
+	return frappe.db.sql('''select name, title, content, notify_on_every_login from tabNote where notify_on_login=1
 		and expire_notification_on > %s and %s not in
 			(select user from `tabNote Seen By` nsb
-				where nsb.parent=`tabNote`.name)''', (frappe.utils.now(), frappe.session.user), as_dict=True)
+				where nsb.parent=tabNote.name)''', (frappe.utils.now(), frappe.session.user), as_dict=True)
+
+def get_gsuite_status():
+	return (frappe.get_value('Gsuite Settings', None, 'enable') == '1')
 
 def get_success_action():
 	return frappe.get_all("Success Action", fields=["*"])
-
-def get_link_preview_doctypes():
-	from frappe.utils import cint
-
-	link_preview_doctypes = [d.name for d in frappe.db.get_all('DocType', {'show_preview_popup': 1})]
-	customizations = frappe.get_all("Property Setter",
-		fields=['doc_type', 'value'],
-		filters={'property': 'show_preview_popup'}
-	)
-
-	for custom in customizations:
-		if not cint(custom.value) and custom.doc_type in link_preview_doctypes:
-			link_preview_doctypes.remove(custom.doc_type)
-		else:
-			link_preview_doctypes.append(custom.doc_type)
-
-	return link_preview_doctypes
-
-def get_additional_filters_from_hooks():
-	filter_config = frappe._dict()
-	filter_hooks = frappe.get_hooks('filters_config')
-	for hook in filter_hooks:
-		filter_config.update(frappe.get_attr(hook)())
-
-	return filter_config

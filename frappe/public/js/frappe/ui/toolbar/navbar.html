@@ -4,13 +4,12 @@
 			<a class="navbar-brand toggle-sidebar visible-xs visible-sm">
 				<i class="octicon octicon-three-bars"></i>
 			</a>
-			<a class="navbar-brand navbar-home hidden-xs hidden-sm" href="#">
-				<img class="app-logo" style="width: {{navbar_settings.logo_width || 24}}px" src="{{ frappe.app.logo_url }}">
-			</a>
+			<a class="navbar-brand navbar-home hidden-xs hidden-sm" href="#">Home</a>
 			<ul class="nav navbar-nav" id="navbar-breadcrumbs">
 			</ul>
 		</div>
 		<div class="navbar-center ellipsis" style="display: none;"></div>
+
 		<ul class="nav navbar-nav navbar-right">
 			<li class="visible-xs">
 				<a class="navbar-search-button" href="#" data-toggle="modal" data-target="#search-modal"><i class="octicon octicon-search"></i></a>
@@ -19,29 +18,24 @@
 				<a class="dropdown-toggle" data-toggle="dropdown" href="#"
 					onclick="return false;">
 				{{ avatar }}
-				<span class="ellipsis toolbar-user-fullname hidden-xs hidden-sm">
-					{%= __("Settings") %}</span>
-				<b class="caret hidden-xs hidden-sm"></b></a>
+                <span class="ellipsis toolbar-user-fullname hidden-xs hidden-sm">
+					{%= frappe.user.full_name() %}</span>
+                <b class="caret hidden-xs hidden-sm"></b></a>
 				<ul class="dropdown-menu" id="toolbar-user" role="menu">
-					{% for item in navbar_settings.settings_dropdown %}
-						{% if (!item.hidden) { %}
-							{% if (item.route) { %}
-								<li>
-									<a href="{{ item.route }}">
-										{%= __(item.item_label) %}
-									</a>
-								</li>
-							{% } else if (item.action) { %}
-								<li>
-									<a onclick="return {{ item.action }}">
-										{%= __(item.item_label) %}
-									</a>
-								</li>
-							{% } else { %}
-								<li class="divider"></li>
-							{% } %}
-						{% } %}
-					{% endfor %}
+					<li class="navbar-set-desktop-icons"><a>
+					    {%= __("Set Desktop Icons") %}</a></li>
+					<li><a href="#Form/User/{%= encodeURIComponent(frappe.session.user) %}">
+					    {%= __("My Settings") %}</a></li>
+					<li class="navbar-reload">
+						<a href="#" onclick="return frappe.ui.toolbar.clear_cache();">
+					    {%= __("Reload") %}</a></li>
+					<li><a href="/index" target="_blank" rel="noopener noreferrer">
+						{%= __("View Website") %}</a></li>
+					<li><a href="#background_jobs">
+						{%= __("Background Jobs") %}</a></li>
+					<li class="divider"></li>
+					<li><a href="#" onclick="return frappe.app.logout();">
+						{%= __("Logout") %}</a></li>
 				</ul>
 			</li>
 
@@ -49,31 +43,15 @@
 				<a class="dropdown-toggle" data-toggle="dropdown" href="#"
 					onclick="return false;"  style="height: 40px;">
 					<span class="hidden-xs hidden-sm" style="line-height: 24px;">{{ __("Help") }} <b class="caret"></b></span>
-					<span class="visible-xs visible-sm standard-image help-icon">?</span>
+					<span class="visible-xs visible-sm standard-image"
+						style="padding: 50% 7px; font-size: 17px; background-color: #fafbfc; font-weight: 100;">?</span>
 				</a>
-				<ul class="dropdown-menu" id="toolbar-help" role="menu">
-					<!-- For custom links added via jquery -->
+				<ul class="dropdown-menu" role="menu">
 					<li id="help-links"></li>
+					<li class="divider"></li>
 					<li class="divider documentation-links"></li>
-					{% for item in navbar_settings.help_dropdown %}
-						{% if (!item.hidden) { %}
-							{% if (item.route) { %}
-								<li>
-									<a href="{{ item.route }}">
-										{%= __(item.item_label) %}
-									</a>
-								</li>
-							{% } else if (item.action) { %}
-								<li>
-									<a onclick="return {{ item.action }}">
-										{%= __(item.item_label) %}
-									</a>
-								</li>
-							{% } else { %}
-								<li class="divider"></li>
-							{% } %}
-						{% } %}
-					{% endfor %}
+					<li><a href="#" onclick="return frappe.ui.toolbar.show_about();">
+						{%= __("About") %}</a></li>
 				</ul>
 			</li>
 
@@ -82,20 +60,11 @@
 			<li class="frappe-chat-dropdown"></li>
 			<!-- end frappe.chat -->
 
-			<li class="dropdown dropdown-notifications dropdown-mobile">
-				<span class="notifications-indicator"><i class="fa fa-circle"></i></span>
-				<a
-					class="dropdown-toggle notifications-icon"
-					data-toggle="dropdown"
-					aria-haspopup="true"
-					aria-expanded="true"
-					href="#"
-					onclick="return false;">
-					<span><i class="fa fa-bell" aria-hidden="true"></i></span>
+			<li class="dropdown dropdown-navbar-new-comments dropdown-mobile">
+				<a class="btn dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
+					<span class="navbar-new-comments">0</span>
 				</a>
-				<ul
-					class="dropdown-menu notifications-list"
-					role="menu">
+				<ul class="dropdown-menu" id="dropdown-notification" role="menu" style="max-height: 480px; overflow-y: auto;">
 				</ul>
 			</li>
 		</ul>
@@ -108,7 +77,7 @@
 							<div class="input-group" style="width: 100%">
 								<input id="modal-search" type="text" class="form-control"
 								placeholder="{%= __("Search or type a command") %}" aria-haspopup="true">
-								<button type="reset" class="close" data-dismiss="modal"><i class="octicon octicon-x"></i></button>
+								<button type="reset" class="close"><i class="octicon octicon-x"></i></button>
 							</div>
 						</form>
 					</div>
@@ -117,13 +86,13 @@
 		</div>
 
 		<div class="hidden-xs">
-			<form class="navbar-form navbar-right" role="search" onsubmit="return false;">
-			  <div class="form-group form-group-sm ui-front">
-				<input id="navbar-search" type="text" class="form-control"
+	        <form class="navbar-form navbar-right" role="search" onsubmit="return false;">
+	          <div class="form-group form-group-sm ui-front">
+	            <input id="navbar-search" type="text" class="form-control"
 					placeholder="{%= __("Search or type a command") %} {%= __("(Ctrl + G)") %}" aria-haspopup="true">
 				<span class="octicon octicon-search navbar-search-icon"></span>
-			  </div>
-			</form>
+	          </div>
+	        </form>
 		</div>
 	</div>
 </div>

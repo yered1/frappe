@@ -5,13 +5,11 @@ from __future__ import unicode_literals
 import frappe, os
 import unittest, email
 
-from frappe.test_runner import make_test_records
-
-make_test_records("User")
-make_test_records("Email Account")
+test_records = frappe.get_test_records('Email Account')
 
 from frappe.core.doctype.communication.email import make
 from frappe.desk.form.load import get_attachments
+from frappe.utils.file_manager import delete_file_from_filesystem
 from frappe.email.doctype.email_account.email_account import notify_unreplied
 from datetime import datetime, timedelta
 
@@ -29,7 +27,7 @@ class TestEmailAccount(unittest.TestCase):
 		email_account.db_set("enable_incoming", 0)
 
 	def test_incoming(self):
-		cleanup("test_sender@example.com")
+		frappe.db.sql("delete from tabCommunication where sender='test_sender@example.com'")
 
 		with open(os.path.join(os.path.dirname(__file__), "test_mails", "incoming-1.raw"), "r") as f:
 			test_mails = [f.read()]
@@ -49,16 +47,16 @@ class TestEmailAccount(unittest.TestCase):
 		comm = frappe.get_doc("Communication", {"sender": "test_sender@example.com"})
 		comm.db_set("creation", datetime.now() - timedelta(seconds = 30 * 60))
 
-		frappe.db.sql("DELETE FROM `tabEmail Queue`")
+		frappe.db.sql("delete from `tabEmail Queue`")
 		notify_unreplied()
 		self.assertTrue(frappe.db.get_value("Email Queue", {"reference_doctype": comm.reference_doctype,
 			"reference_name": comm.reference_name, "status":"Not Sent"}))
 
 	def test_incoming_with_attach(self):
-		cleanup("test_sender@example.com")
-
+		frappe.db.sql("delete from tabCommunication where sender='test_sender@example.com'")
 		existing_file = frappe.get_doc({'doctype': 'File', 'file_name': 'erpnext-conf-14.png'})
 		frappe.delete_doc("File", existing_file.name)
+		delete_file_from_filesystem(existing_file)
 
 		with open(os.path.join(os.path.dirname(__file__), "test_mails", "incoming-2.raw"), "r") as testfile:
 			test_mails = [testfile.read()]
@@ -76,10 +74,10 @@ class TestEmailAccount(unittest.TestCase):
 		# cleanup
 		existing_file = frappe.get_doc({'doctype': 'File', 'file_name': 'erpnext-conf-14.png'})
 		frappe.delete_doc("File", existing_file.name)
-
+		delete_file_from_filesystem(existing_file)
 
 	def test_incoming_attached_email_from_outlook_plain_text_only(self):
-		cleanup("test_sender@example.com")
+		frappe.db.sql("delete from tabCommunication where sender='test_sender@example.com'")
 
 		with open(os.path.join(os.path.dirname(__file__), "test_mails", "incoming-3.raw"), "r") as f:
 			test_mails = [f.read()]
@@ -92,7 +90,7 @@ class TestEmailAccount(unittest.TestCase):
 		self.assertTrue("This is an e-mail message sent automatically by Microsoft Outlook while" in comm.content)
 
 	def test_incoming_attached_email_from_outlook_layers(self):
-		cleanup("test_sender@example.com")
+		frappe.db.sql("delete from tabCommunication where sender='test_sender@example.com'")
 
 		with open(os.path.join(os.path.dirname(__file__), "test_mails", "incoming-4.raw"), "r") as f:
 			test_mails = [f.read()]
@@ -127,7 +125,8 @@ class TestEmailAccount(unittest.TestCase):
 		self.assertTrue("test-mail-002" in sent_mail.get("Subject"))
 
 	def test_threading(self):
-		cleanup(["in", ['test_sender@example.com', 'test@example.com']])
+		frappe.db.sql("""delete from tabCommunication
+			where sender in ('test_sender@example.com', 'test@example.com')""")
 
 		# send
 		sent_name = make(subject = "Test", content="test content",
@@ -152,7 +151,8 @@ class TestEmailAccount(unittest.TestCase):
 		self.assertEqual(comm.reference_name, sent.reference_name)
 
 	def test_threading_by_subject(self):
-		cleanup(["in", ['test_sender@example.com', 'test@example.com']])
+		frappe.db.sql("""delete from tabCommunication
+			where sender in ('test_sender@example.com', 'test@example.com')""")
 
 		with open(os.path.join(os.path.dirname(__file__), "test_mails", "reply-2.raw"), "r") as f:
 			test_mails = [f.read()]
@@ -172,7 +172,7 @@ class TestEmailAccount(unittest.TestCase):
 		self.assertEqual(comm_list[0].reference_name, comm_list[1].reference_name)
 
 	def test_threading_by_message_id(self):
-		cleanup()
+		frappe.db.sql("""delete from tabCommunication""")
 		frappe.db.sql("""delete from `tabEmail Queue`""")
 
 		# reference document for testing
@@ -198,13 +198,3 @@ class TestEmailAccount(unittest.TestCase):
 		# check if threaded correctly
 		self.assertEqual(comm_list[0].reference_doctype, event.doctype)
 		self.assertEqual(comm_list[0].reference_name, event.name)
-
-def cleanup(sender=None):
-	filters = {}
-	if sender:
-		filters.update({"sender": sender})
-
-	names = frappe.get_list("Communication", filters=filters, fields=["name"])
-	for name in names:
-		frappe.delete_doc_if_exists("Communication", name.name)
-		frappe.delete_doc_if_exists("Communication Link", {"parent": name.name})

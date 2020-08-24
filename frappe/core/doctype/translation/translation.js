@@ -3,7 +3,5 @@
 
 
 frappe.ui.form.on('Translation', {
-	refresh: function() {
-		//
-	}
 });
+

@@ -3,10 +3,6 @@ frappe.socketio = {
 	open_docs: [],
 	emit_queue: [],
 	init: function(port = 3000) {
-		if (!window.io) {
-			return;
-		}
-
 		if (frappe.boot.disable_async) {
 			return;
 		}
@@ -89,14 +85,6 @@ frappe.socketio = {
 			frappe.socketio.doc_close(frm.doctype, frm.docname);
 		});
 
-		$(document).on('form-typing', function(e, frm) {
-			frappe.socketio.form_typing(frm.doctype, frm.docname);
-		});
-
-		$(document).on('form-stopped-typing', function(e, frm) {
-			frappe.socketio.form_stopped_typing(frm.doctype, frm.docname);
-		});
-
 		window.onbeforeunload = function() {
 			if (!cur_frm || cur_frm.is_new()) {
 				return;
@@ -161,7 +149,7 @@ frappe.socketio = {
 	doc_open: function(doctype, docname) {
 		// notify that the user has opened this doc, if not already notified
 		if(!frappe.socketio.last_doc
-			|| (frappe.socketio.last_doc[0]!=doctype && frappe.socketio.last_doc[1]!=docname)) {
+			|| (frappe.socketio.last_doc[0]!=doctype && frappe.socketio.last_doc[0]!=docname)) {
 			frappe.socketio.socket.emit('doc_open', doctype, docname);
 		}
 		frappe.socketio.last_doc = [doctype, docname];
@@ -169,18 +157,8 @@ frappe.socketio = {
 	doc_close: function(doctype, docname) {
 		// notify that the user has closed this doc
 		frappe.socketio.socket.emit('doc_close', doctype, docname);
+	},
 
-		// if the doc is closed the user has also stopped typing
-		frappe.socketio.socket.emit('doc_typing_stopped', doctype, docname);
-	},
-	form_typing: function(doctype, docname) {
-		// notifiy that the user is typing on the doc
-		frappe.socketio.socket.emit('doc_typing', doctype, docname);
-	},
-	form_stopped_typing: function(doctype, docname) {
-		// notifiy that the user has stopped typing
-		frappe.socketio.socket.emit('doc_typing_stopped', doctype, docname);
-	},
 	setup_listeners: function() {
 		frappe.socketio.socket.on('task_status_change', function(data) {
 			frappe.socketio.process_response(data, data.status.toLowerCase());
@@ -305,8 +283,7 @@ frappe.socketio.SocketIOUploader = class SocketIOUploader {
 		}
 
 		function fallback_required() {
-			return !frappe.socketio.socket.connected
-				|| !( !frappe.boot.sysdefaults || frappe.boot.sysdefaults.use_socketio_to_upload_file );
+			return !frappe.boot.sysdefaults.use_socketio_to_upload_file || !frappe.socketio.socket.connected;
 		}
 
 		if (fallback_required()) {

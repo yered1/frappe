@@ -3,3 +3,4 @@
 
 from __future__ import unicode_literals
 
+no_sitemap = 1

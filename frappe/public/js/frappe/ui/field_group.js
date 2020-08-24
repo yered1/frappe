@@ -63,7 +63,7 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 	},
 	catch_enter_as_submit: function() {
 		var me = this;
-		$(this.body).find('input[type="text"], input[type="password"], select').keypress(function(e) {
+		$(this.body).find('input[type="text"], input[type="password"]').keypress(function(e) {
 			if(e.which==13) {
 				if(me.has_primary_action) {
 					e.preventDefault();
@@ -82,22 +82,17 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 	get_values: function(ignore_errors) {
 		var ret = {};
 		var errors = [];
-		for (var key in this.fields_dict) {
+		for(var key in this.fields_dict) {
 			var f = this.fields_dict[key];
-			if (f.get_value) {
+			if(f.get_value) {
 				var v = f.get_value();
-				if (f.df.reqd && is_null(v))
+				if(f.df.reqd && is_null(v))
 					errors.push(__(f.df.label));
 
-				if (f.df.reqd
-					&& f.df.fieldtype === 'Text Editor'
-					&& is_null(strip_html(cstr(v))))
-					errors.push(__(f.df.label));
-
-				if (!is_null(v)) ret[f.df.fieldname] = v;
+				if(!is_null(v)) ret[f.df.fieldname] = v;
 			}
 		}
-		if (errors.length && !ignore_errors) {
+		if(errors.length && !ignore_errors) {
 			frappe.msgprint({
 				title: __('Missing Values Required'),
 				message: __('Following fields have missing values:') +
@@ -130,14 +125,11 @@ frappe.ui.FieldGroup = frappe.ui.form.Layout.extend({
 		return this.set_value(key, val);
 	},
 	set_values: function(dict) {
-		let promises = [];
 		for(var key in dict) {
 			if(this.fields_dict[key]) {
-				promises.push(this.set_value(key, dict[key]));
+				this.set_value(key, dict[key]);
 			}
 		}
-
-		return Promise.all(promises);
 	},
 	clear: function() {
 		for(var key in this.fields_dict) {

@@ -98,12 +98,6 @@ class TestPermissions(unittest.TestCase):
 		doc = frappe.new_doc("Blog Post")
 		self.assertFalse(doc.get("blog_category"))
 
-		# Fetch user permission set as default from multiple user permission
-		add_user_permission("Blog Category", "_Test Blog Category 2", "test2@example.com", ignore_permissions=True, is_default=1)
-		frappe.clear_cache()
-		doc = frappe.new_doc("Blog Post")
-		self.assertEqual(doc.get("blog_category"), "_Test Blog Category 2")
-
 	def test_user_link_match_doc(self):
 		blogger = frappe.get_doc("Blogger", "_Test Blogger 1")
 		blogger.user = "test2@example.com"
@@ -201,7 +195,7 @@ class TestPermissions(unittest.TestCase):
 		doc = frappe.get_doc("DocType", "Blog Post")
 
 		# change one property from the child table
-		doc.fields[-1].fieldtype = 'Check'
+		doc.fields[-1].fieldtype = 'HTML'
 		self.assertRaises(frappe.CannotChangeConstantError, doc.save)
 		frappe.clear_cache(doctype='DocType')
 
@@ -313,9 +307,7 @@ class TestPermissions(unittest.TestCase):
 			doctype"""
 
 		frappe.set_user('Administrator')
-		frappe.db.sql('DELETE FROM `tabContact`')
-		frappe.db.sql('DELETE FROM `tabContact Email`')
-		frappe.db.sql('DELETE FROM `tabContact Phone`')
+		frappe.db.sql('delete from tabContact')
 
 		reset('Salutation')
 		reset('Contact')
@@ -325,8 +317,8 @@ class TestPermissions(unittest.TestCase):
 		add_user_permission("Salutation", "Mr", "test3@example.com")
 		self.set_strict_user_permissions(0)
 
-		allowed_contact = frappe.get_doc('Contact', '_Test Contact For _Test Customer')
-		other_contact = frappe.get_doc('Contact', '_Test Contact For _Test Supplier')
+		allowed_contact = frappe.get_doc('Contact', '_Test Contact for _Test Customer')
+		other_contact = frappe.get_doc('Contact', '_Test Contact for _Test Supplier')
 
 		frappe.set_user("test3@example.com")
 		self.assertTrue(allowed_contact.has_permission('read'))

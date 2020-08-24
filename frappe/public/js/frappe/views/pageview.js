@@ -1,6 +1,5 @@
 // Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
-import Desktop from './desktop/desktop.js';
 
 frappe.provide('frappe.views.pageview');
 frappe.provide("frappe.standard_pages");
@@ -15,7 +14,7 @@ frappe.views.pageview = {
 			return;
 		}
 
-		if((locals.Page && locals.Page[name] && locals.Page[name].script) || name==window.page_name) {
+		if((locals.Page && locals.Page[name]) || name==window.page_name) {
 			// already loaded
 			callback();
 		} else if(localStorage["_page:" + name] && frappe.boot.developer_mode!=1) {
@@ -37,27 +36,9 @@ frappe.views.pageview = {
 			});
 		}
 	},
-
 	show: function(name) {
 		if(!name) {
 			name = (frappe.boot ? frappe.boot.home_page : window.page_name);
-
-			if(name === "workspace") {
-				if(!frappe.workspace) {
-					let page = frappe.container.add_page('workspace');
-					let container = $('<div class="container"></div>').appendTo(page);
-					container = $('<div></div>').appendTo(container);
-
-					frappe.workspace = new Desktop({
-						wrapper: container
-					})
-				}
-
-				frappe.container.change_to('workspace');
-				frappe.workspace.route();
-				frappe.utils.set_title(__('Desk'));
-				return;
-			}
 		}
 		frappe.model.with_doctype("Page", function() {
 			frappe.views.pageview.with_page(name, function(r) {
@@ -98,12 +79,10 @@ frappe.views.Page = Class.extend({
 				this.wrapper.innerHTML = this.pagedoc.content;
 			frappe.dom.eval(this.pagedoc.__script || this.pagedoc.script || '');
 			frappe.dom.set_style(this.pagedoc.style || '');
-
-			// set breadcrumbs
-			frappe.breadcrumbs.add(this.pagedoc.module || null);
 		}
 
 		this.trigger_page_event('on_page_load');
+
 		// set events
 		$(this.wrapper).on('show', function() {
 			window.cur_frm = null;

@@ -18,10 +18,6 @@ frappe.ui.form.on("Communication", {
 		frm.convert_to_click && frm.set_convert_button();
 		frm.subject_field = "subject";
 
-		// content field contains weird table html that does not render well in Quill
-		// this field is not to be edited directly anyway, so setting it as read only
-		frm.set_df_property('content', 'read_only', 1);
-
 		if(frm.doc.reference_doctype && frm.doc.reference_name) {
 			frm.add_custom_button(__(frm.doc.reference_name), function() {
 				frappe.set_route("Form", frm.doc.reference_doctype, frm.doc.reference_name);
@@ -35,13 +31,22 @@ frappe.ui.form.on("Communication", {
 			}
 		}
 
+		if(frm.doc.communication_type == "Feedback") {
+			frm.add_custom_button(__("Resend"), function() {
+				var feedback = new frappe.utils.Feedback();
+				feedback.resend_feedback_request(frm.doc);
+			});
+		}
+
 		if(frm.doc.status==="Open") {
 			frm.add_custom_button(__("Close"), function() {
-				frm.trigger('mark_as_closed_open');
+				frm.set_value("status", "Closed");
+				frm.save();
 			});
 		} else if (frm.doc.status !== "Linked") {
 			frm.add_custom_button(__("Reopen"), function() {
-				frm.trigger('mark_as_closed_open');
+				frm.set_value("status", "Open");
+				frm.save();
 			});
 		}
 
@@ -49,7 +54,7 @@ frappe.ui.form.on("Communication", {
 			frm.trigger('show_relink_dialog');
 		});
 
-		if(frm.doc.communication_type=="Communication"
+		if(frm.doc.communication_type=="Communication" 
 			&& frm.doc.communication_medium == "Email"
 			&& frm.doc.sent_or_received == "Received") {
 
@@ -59,43 +64,39 @@ frappe.ui.form.on("Communication", {
 
 			frm.add_custom_button(__("Reply All"), function() {
 				frm.trigger('reply_all');
-			}, __("Actions"));
+			}, "Actions");
 
 			frm.add_custom_button(__("Forward"), function() {
 				frm.trigger('forward_mail');
-			}, __("Actions"));
+			}, "Actions");
 
-			frm.add_custom_button(frm.doc.seen ? __("Mark as Unread") : __("Mark as Read"), function() {
+			frm.add_custom_button(__("Mark as {0}", [frm.doc.seen? "Unread": "Read"]), function() {
 				frm.trigger('mark_as_read_unread');
-			}, __("Actions"));
+			}, "Actions");
 
-			frm.add_custom_button(__("Move"), function() {
-				frm.trigger('show_move_dialog');
-			}, __("Actions"));
+			frm.add_custom_button(__("Add Contact"), function() {
+				frm.trigger('add_to_contact');
+			}, "Actions");
 
 			if(frm.doc.email_status != "Spam")
 				frm.add_custom_button(__("Mark as Spam"), function() {
 					frm.trigger('mark_as_spam');
-				}, __("Actions"));
+				}, "Actions");
 
 			if(frm.doc.email_status != "Trash") {
 				frm.add_custom_button(__("Move To Trash"), function() {
 					frm.trigger('move_to_trash');
-				}, __("Actions"));
+				}, "Actions");
 			}
-
-			frm.add_custom_button(__("Contact"), function() {
-				frm.trigger('add_to_contact');
-			}, __('Create'));
 		}
 
-		if(frm.doc.communication_type=="Communication"
+		if(frm.doc.communication_type=="Communication" 
 			&& frm.doc.communication_medium == "Phone"
 			&& frm.doc.sent_or_received == "Received"){
 
 			frm.add_custom_button(__("Add Contact"), function() {
 				frm.trigger('add_to_contact');
-			}, __("Actions"));
+			}, "Actions");
 		}
 	},
 
@@ -147,43 +148,6 @@ frappe.ui.form.on("Communication", {
 		d.show();
 	},
 
-	show_move_dialog: function(frm) {
-		var d = new frappe.ui.Dialog ({
-			title: __("Move"),
-			fields: [{
-				"fieldtype": "Link",
-				"options": "Email Account",
-				"label": __("Email Account"),
-				"fieldname": "email_account",
-				"reqd": 1,
-				"get_query": function() {
-					return {
-						"filters": {
-							"name": ["!=", frm.doc.email_account],
-							"enable_incoming": ["=", 1]
-						}
-					};
-				}
-			}],
-			primary_action_label: __("Move"),
-			primary_action(values) {
-				d.hide();
-				frappe.call({
-					method: "frappe.email.inbox.move_email",
-					args: {
-						communication: frm.doc.name,
-						email_account: values.email_account
-					},
-					freeze: true,
-					callback: function() {
-						window.history.back();
-					}
-				});
-			}
-		});
-		d.show();
-	},
-
 	mark_as_read_unread: function(frm) {
 		var action = frm.doc.seen? "Unread": "Read";
 		var flag = "(\\SEEN)";
@@ -195,26 +159,7 @@ frappe.ui.form.on("Communication", {
 				'action': action,
 				'flag': flag
 			},
-			freeze: true,
-			callback: function() {
-				frm.reload_doc();
-			}
-		});
-	},
-
-	mark_as_closed_open: function(frm) {
-		var status = frm.doc.status == "Open" ? "Closed" : "Open";
-
-		return frappe.call({
-			method: "frappe.email.inbox.mark_as_closed_open",
-			args: {
-				communication: frm.doc.name,
-				status: status
-			},
-			freeze: true,
-			callback: function() {
-				frm.reload_doc();
-			}
+			freeze: true
 		});
 	},
 
@@ -231,7 +176,7 @@ frappe.ui.form.on("Communication", {
 	reply_all: function(frm) {
 		var args = frm.events.get_mail_args(frm)
 		$.extend(args, {
-			subject: __("Res: {0}", [frm.doc.subject]),
+			subject: __("Re: {0}", [frm.doc.subject]),
 			recipients: frm.doc.sender,
 			cc: frm.doc.cc
 		})
@@ -240,7 +185,7 @@ frappe.ui.form.on("Communication", {
 
 	forward_mail: function(frm) {
 		var args = frm.events.get_mail_args(frm)
-		$.extend(args, {
+		$.extend(args, {		
 			forward: true,
 			subject: __("Fw: {0}", [frm.doc.subject]),
 		})

@@ -18,7 +18,7 @@ class TestDataMigrationRun(unittest.TestCase):
 		frappe.get_doc(dict(
 			doctype='Event',
 			subject=event_subject,
-			repeat_on='Monthly',
+			repeat_on='Every Month',
 			starts_on=frappe.utils.now_datetime()
 		)).insert()
 
@@ -45,11 +45,11 @@ class TestDataMigrationRun(unittest.TestCase):
 		created_todo = frappe.get_doc('ToDo', {'description': event_subject})
 		self.assertEqual(created_todo.description, event_subject)
 
-		todo_list = frappe.get_list('ToDo', filters={'description': 'data migration todo'}, fields=['name'])
+		todo_list = frappe.get_list('ToDo', filters={'description': 'Data migration todo'}, fields=['name'])
 		todo_name = todo_list[0].name
 
 		todo = frappe.get_doc('ToDo', todo_name)
-		todo.description = 'data migration todo updated'
+		todo.description = 'Data migration todo updated'
 		todo.save()
 
 		run = frappe.get_doc({
@@ -77,7 +77,7 @@ def create_plan():
 			{ 'remote_fieldname': 'starts_on', 'local_fieldname': 'eval:frappe.utils.get_datetime_str(frappe.utils.get_datetime())' }
 		],
 		'condition': '{"description": "data migration todo" }'
-	}).insert(ignore_if_duplicate=True)
+	}).insert()
 
 	frappe.get_doc({
 		'doctype': 'Data Migration Mapping',
@@ -91,24 +91,23 @@ def create_plan():
 		'fields': [
 			{ 'remote_fieldname': 'subject', 'local_fieldname': 'description' }
 		]
-	}).insert(ignore_if_duplicate=True)
+	}).insert()
 
 	frappe.get_doc({
 		'doctype': 'Data Migration Plan',
-		'plan_name': 'ToDo Sync',
+		'plan_name': 'ToDo sync',
 		'module': 'Core',
 		'mappings': [
 			{ 'mapping': 'Todo to Event' },
 			{ 'mapping': 'Event to ToDo' }
 		]
-	}).insert(ignore_if_duplicate=True)
+	}).insert()
 
 	frappe.get_doc({
 		'doctype': 'Data Migration Connector',
 		'connector_name': 'Local Connector',
 		'connector_type': 'Frappe',
-		# connect to same host.
-		'hostname': frappe.conf.host_name or frappe.utils.get_site_url(frappe.local.site),
+		'hostname': 'http://localhost:8000',
 		'username': 'Administrator',
-		'password': frappe.conf.get("admin_password") or 'admin'
-	}).insert(ignore_if_duplicate=True)
+		'password': 'admin'
+	}).insert()

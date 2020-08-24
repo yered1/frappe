@@ -51,7 +51,7 @@ class TestNaming(unittest.TestCase):
 		todo.description = description
 		todo.insert()
 
-		series = getseries('', 2)
+		series = getseries('', 2, doctype)
 
 		series = str(int(series)-1)
 
@@ -88,7 +88,6 @@ class TestNaming(unittest.TestCase):
 		series = 'TEST-'
 		key = 'TEST-'
 		name = 'TEST-00003'
-		frappe.db.sql("DELETE FROM `tabSeries` WHERE `name`=%s", series)
 		frappe.db.sql("""INSERT INTO `tabSeries` (name, current) values (%s, 3)""", (series,))
 		revert_series_if_last(key, name)
 		count = frappe.db.sql("""SELECT current from `tabSeries` where name = %s""", series, as_dict=True)[0]

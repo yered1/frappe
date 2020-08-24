@@ -1,5 +1,10 @@
 import Quill from 'quill';
 
+// replace <p> tag with <div>
+const Block = Quill.import('blots/block');
+Block.tagName = 'DIV';
+Quill.register(Block, true);
+
 const CodeBlockContainer = Quill.import('formats/code-block-container');
 CodeBlockContainer.tagName = 'PRE';
 Quill.register(CodeBlockContainer, true);
@@ -12,8 +17,7 @@ Table.create = (value) => {
 	node.classList.add('table');
 	node.classList.add('table-bordered');
 	return node;
-};
-
+}
 Quill.register(Table, true);
 
 // link without href
@@ -24,7 +28,7 @@ class MyLink extends Link {
 		let node = super.create(value);
 		value = this.sanitize(value);
 		node.setAttribute('href', value);
-		if (value.startsWith('/') || value.indexOf(window.location.host)) {
+		if(value.startsWith('/') || value.indexOf(window.location.host)) {
 			// no href if internal link
 			node.removeAttribute('target');
 		}
@@ -32,7 +36,7 @@ class MyLink extends Link {
 	}
 }
 
-Quill.register(MyLink, true);
+Quill.register(MyLink);
 
 // image uploader
 const Uploader = Quill.import('modules/uploader');
@@ -50,25 +54,10 @@ Quill.register(FontStyle, true);
 Quill.register(AlignStyle, true);
 Quill.register(DirectionStyle, true);
 
-// replace font tag with span
-const Inline = Quill.import('blots/inline');
-
-class CustomColor extends Inline {
-	constructor(domNode, value) {
-		super(domNode, value);
-		this.domNode.style.color = this.domNode.color;
-		domNode.outerHTML = this.domNode.outerHTML.replace(/<font/g, '<span').replace(/<\/font>/g, '</span>');
-	}
-}
-
-CustomColor.blotName = "customColor";
-CustomColor.tagName = "font";
-
-Quill.register(CustomColor, true);
-
 frappe.ui.form.ControlTextEditor = frappe.ui.form.ControlCode.extend({
 	make_wrapper() {
 		this._super();
+		this.$wrapper.find(".like-disabled-input").addClass("ql-editor");
 	},
 
 	make_input() {
@@ -158,7 +147,7 @@ frappe.ui.form.ControlTextEditor = frappe.ui.form.ControlCode.extend({
 			[{ 'color': [] }, { 'background': [] }],
 			['blockquote', 'code-block'],
 			['link', 'image'],
-			[{ 'list': 'ordered' }, { 'list': 'bullet' }, { 'list': 'check' }],
+			[{ 'list': 'ordered' }, { 'list': 'bullet' }],
 			[{ 'align': [] }],
 			[{ 'indent': '-1'}, { 'indent': '+1' }],
 			[{'table': [
@@ -198,21 +187,18 @@ frappe.ui.form.ControlTextEditor = frappe.ui.form.ControlCode.extend({
 
 	get_input_value() {
 		let value = this.quill ? this.quill.root.innerHTML : '';
-		// hack to retain space sequence.
-		value = value.replace(/(\s)(\s)/g, ' &nbsp;');
-
-		try {
-			if (!$(value).find('.ql-editor').length) {
-				value = `<div class="ql-editor read-mode">${value}</div>`;
-			}
-		} catch(e) {
-			value = `<div class="ql-editor read-mode">${value}</div>`;
-		}
-
+		// quill keeps ol as a common container for both type of lists
+		// and uses css for appearances, this is not semantic
+		// so we convert ol to ul if it is unordered
+		const $value = $(`<div>${value}</div>`);
+		$value.find('ol li[data-list=bullet]:first-child').each((i, li) => {
+			let $li = $(li);
+			let $parent = $li.parent();
+			let $children = $parent.children();
+			let $ul = $('<ul>').append($children);
+			$parent.replaceWith($ul);
+		});
+		value = $value.html();
 		return value;
-	},
-
-	set_focus() {
-		this.quill.focus();
 	}
 });

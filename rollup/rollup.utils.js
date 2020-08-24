@@ -69,18 +69,6 @@ function run_serially(tasks) {
 
 const get_app_path = app => app_paths[app];
 
-const get_options_for_scss = () => {
-	const node_modules_path = path.resolve(get_app_path('frappe'), '..', 'node_modules');
-	const app_paths = apps_list.map(get_app_path).map(app_path => path.resolve(app_path, '..'));
-
-	return {
-		includePaths: [
-			node_modules_path,
-			...app_paths
-		]
-	};
-};
-
 module.exports = {
 	sites_path,
 	bundle_map,
@@ -92,6 +80,5 @@ module.exports = {
 	assets_path,
 	bench_path,
 	delete_file,
-	run_serially,
-	get_options_for_scss
+	run_serially
 };

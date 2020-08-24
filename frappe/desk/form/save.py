@@ -18,10 +18,16 @@ def savedocs(doc, action):
 		if doc.docstatus==1:
 			doc.submit()
 		else:
-			doc.save()
+			try:
+				doc.save()
+			except frappe.NameError as e:
+				doctype, name, original_exception = e if isinstance(e, tuple) else (doc.doctype or "", doc.name or "", None)
+				frappe.msgprint(frappe._("{0} {1} already exists").format(doctype, name))
+				raise
 
 		# update recent documents
 		run_onload(doc)
+		frappe.get_user().update_recent(doc.doctype, doc.name)
 		send_updated_docs(doc)
 	except Exception:
 		frappe.errprint(frappe.utils.get_traceback())

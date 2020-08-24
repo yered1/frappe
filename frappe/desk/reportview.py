@@ -9,10 +9,10 @@ from six.moves import range
 import frappe.permissions
 from frappe.model.db_query import DatabaseQuery
 from frappe import _
-from six import string_types, StringIO
-from frappe.core.doctype.access_log.access_log import make_access_log
-from frappe.utils import cstr
+from six import text_type, string_types, StringIO
 
+# imports - third-party imports
+import pymysql
 
 @frappe.whitelist()
 @frappe.read_only()
@@ -30,13 +30,7 @@ def get_form_params():
 	"""Stringify GET request parameters."""
 	data = frappe._dict(frappe.local.form_dict)
 
-	is_report = data.get('view') == 'Report'
-
-	data.pop('cmd', None)
-	data.pop('data', None)
-	data.pop('ignore_permissions', None)
-	data.pop('view', None)
-
+	del data["cmd"]
 	if "csrf_token" in data:
 		del data["csrf_token"]
 
@@ -57,8 +51,6 @@ def get_form_params():
 		key = field.split(" as ")[0]
 
 		if key.startswith('count('): continue
-		if key.startswith('sum('): continue
-		if key.startswith('avg('): continue
 
 		if "." in key:
 			parenttype, fieldname = key.split(".")[0][4:-1], key.split(".")[1].strip("`")
@@ -68,17 +60,15 @@ def get_form_params():
 
 		df = frappe.get_meta(parenttype).get_field(fieldname)
 
-		fieldname = df.fieldname if df else None
 		report_hide = df.report_hide if df else None
 
-		# remove the field from the query if the report hide flag is set and current view is Report
-		if report_hide and is_report:
+		# remove the field from the query if the report hide flag is set
+		if report_hide:
 			fields.remove(field)
 
 
 	# queries must always be server side
 	data.query = None
-	data.strict = None
 
 	return data
 
@@ -119,23 +109,18 @@ def save_report():
 	d.report_type = "Report Builder"
 	d.json = data['json']
 	frappe.get_doc(d).save()
-	frappe.msgprint(_("{0} is saved").format(d.name), alert=True)
+	frappe.msgprint(_("{0} is saved").format(d.name))
 	return d.name
 
 @frappe.whitelist()
-@frappe.read_only()
 def export_query():
 	"""export from report builder"""
-	title = frappe.form_dict.title
-	frappe.form_dict.pop('title', None)
-
 	form_params = get_form_params()
 	form_params["limit_page_length"] = None
 	form_params["as_list"] = True
 	doctype = form_params.doctype
 	add_totals_row = None
 	file_format_type = form_params["file_format_type"]
-	title = title or doctype
 
 	del form_params["doctype"]
 	del form_params["file_format_type"]
@@ -150,11 +135,6 @@ def export_query():
 		si = json.loads(frappe.form_dict.get('selected_items'))
 		form_params["filters"] = {"name": ("in", si)}
 		del form_params["selected_items"]
-
-	make_access_log(doctype=doctype,
-		file_type=file_format_type,
-		report_name=form_params.report_name,
-		filters=form_params.filters)
 
 	db_query = DatabaseQuery(doctype)
 	ret = db_query.execute(**form_params)
@@ -176,20 +156,20 @@ def export_query():
 		writer = csv.writer(f)
 		for r in data:
 			# encode only unicode type strings and not int, floats etc.
-			writer.writerow([handle_html(frappe.as_unicode(v)) \
+			writer.writerow([handle_html(frappe.as_unicode(v)).encode('utf-8') \
 				if isinstance(v, string_types) else v for v in r])
 
 		f.seek(0)
-		frappe.response['result'] = cstr(f.read())
+		frappe.response['result'] = text_type(f.read(), 'utf-8')
 		frappe.response['type'] = 'csv'
-		frappe.response['doctype'] = title
+		frappe.response['doctype'] = doctype
 
 	elif file_format_type == "Excel":
 
 		from frappe.utils.xlsxutils import make_xlsx
 		xlsx_file = make_xlsx(data, doctype)
 
-		frappe.response['filename'] = title + '.xlsx'
+		frappe.response['filename'] = doctype + '.xlsx'
 		frappe.response['filecontent'] = xlsx_file.getvalue()
 		frappe.response['type'] = 'binary'
 
@@ -205,10 +185,6 @@ def append_totals_row(data):
 		for i in range(len(row)):
 			if isinstance(row[i], (float, int)):
 				totals[i] = (totals[i] or 0) + row[i]
-
-	if not isinstance(totals[0], (int, float)):
-		totals[0] = 'Total'
-
 	data.append(totals)
 
 	return data
@@ -218,8 +194,6 @@ def get_labels(fields, doctype):
 	labels = []
 	for key in fields:
 		key = key.split(" as ")[0]
-
-		if key.startswith(('count(', 'sum(', 'avg(')): continue
 
 		if "." in key:
 			parenttype, fieldname = key.split(".")[0][4:-1], key.split(".")[1].strip("`")
@@ -240,38 +214,35 @@ def delete_items():
 	"""delete selected items"""
 	import json
 
-	items = sorted(json.loads(frappe.form_dict.get('items')), reverse=True)
+	il = sorted(json.loads(frappe.form_dict.get('items')), reverse=True)
 	doctype = frappe.form_dict.get('doctype')
 
-	if len(items) > 10:
-		frappe.enqueue('frappe.desk.reportview.delete_bulk',
-			doctype=doctype, items=items)
-	else:
-		delete_bulk(doctype, items)
+	failed = []
 
-def delete_bulk(doctype, items):
-	for i, d in enumerate(items):
+	for i, d in enumerate(il):
 		try:
 			frappe.delete_doc(doctype, d)
-			if len(items) >= 5:
+			if len(il) >= 5:
 				frappe.publish_realtime("progress",
-					dict(progress=[i+1, len(items)], title=_('Deleting {0}').format(doctype), description=d),
+					dict(progress=[i+1, len(il)], title=_('Deleting {0}').format(doctype), description=d),
 						user=frappe.session.user)
-			# Commit after successful deletion
-			frappe.db.commit()
 		except Exception:
-			# rollback if any record failed to delete
-			# if not rollbacked, queries get committed on after_request method in app.py
-			frappe.db.rollback()
+			failed.append(d)
+
+	return failed
 
 @frappe.whitelist()
 @frappe.read_only()
 def get_sidebar_stats(stats, doctype, filters=[]):
+	cat_tags = frappe.db.sql("""select tag.parent as category, tag.tag_name as tag
+		from `tabTag Doc Category` as docCat
+		INNER JOIN  tabTag as tag on tag.parent = docCat.parent
+		where docCat.tagdoc=%s
+		ORDER BY tag.parent asc,tag.idx""",doctype,as_dict=1)
 
-	return {"stats": get_stats(stats, doctype, filters)}
+	return {"defined_cat":cat_tags, "stats":get_stats(stats, doctype, filters)}
 
 @frappe.whitelist()
-@frappe.read_only()
 def get_stats(stats, doctype, filters=[]):
 	"""get tag info"""
 	import json
@@ -282,7 +253,7 @@ def get_stats(stats, doctype, filters=[]):
 
 	try:
 		columns = frappe.db.get_table_columns(doctype)
-	except frappe.db.InternalError:
+	except pymysql.InternalError:
 		# raised when _user_tags column is added on the fly
 		columns = []
 
@@ -301,10 +272,10 @@ def get_stats(stats, doctype, filters=[]):
 			else:
 				stats[tag] = tagcount
 
-		except frappe.db.SQLError:
+		except frappe.SQLError:
 			# does not work for child tables
 			pass
-		except frappe.db.InternalError:
+		except pymysql.InternalError:
 			# raised when _user_tags column is added on the fly
 			pass
 	return stats
@@ -367,11 +338,8 @@ def scrub_user_tags(tagcount):
 	return rlist
 
 # used in building query in queries.py
-def get_match_cond(doctype, as_condition=True):
-	cond = DatabaseQuery(doctype).build_match_conditions(as_condition=as_condition)
-	if not as_condition:
-		return cond
-
+def get_match_cond(doctype):
+	cond = DatabaseQuery(doctype).build_match_conditions()
 	return ((' and ' + cond) if cond else "").replace("%", "%%")
 
 def build_match_conditions(doctype, user=None, as_condition=True):

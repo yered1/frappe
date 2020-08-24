@@ -6,11 +6,9 @@ from __future__ import unicode_literals
 import frappe, json
 from frappe.utils import cstr, unique, cint
 from frappe.permissions import has_permission
-from frappe.handler import is_whitelisted
 from frappe import _
 from six import string_types
 import re
-import wrapt
 
 UNTRANSLATED_DOCTYPES = ["DocType", "Role"]
 
@@ -52,7 +50,7 @@ def sanitize_searchfield(searchfield):
 # this is called by the Link Field
 @frappe.whitelist()
 def search_link(doctype, txt, query=None, filters=None, page_length=20, searchfield=None, reference_doctype=None, ignore_user_permissions=False):
-	search_widget(doctype, txt.strip(), query, searchfield=searchfield, page_length=page_length, filters=filters, reference_doctype=reference_doctype, ignore_user_permissions=ignore_user_permissions)
+	search_widget(doctype, txt, query, searchfield=searchfield, page_length=page_length, filters=filters, reference_doctype=reference_doctype, ignore_user_permissions=ignore_user_permissions)
 	frappe.response['results'] = build_for_autosuggest(frappe.response["values"])
 	del frappe.response["values"]
 
@@ -76,17 +74,8 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 
 	if query and query.split()[0].lower()!="select":
 		# by method
-		try:
-			is_whitelisted(frappe.get_attr(query))
-			frappe.response["values"] = frappe.call(query, doctype, txt,
-				searchfield, start, page_length, filters, as_dict=as_dict)
-		except Exception as e:
-			if frappe.local.conf.developer_mode:
-				raise e
-			else:
-				frappe.respond_as_web_page(title='Invalid Method', html='Method not found',
-				indicator_color='red', http_status_code=404)
-			return
+		frappe.response["values"] = frappe.call(query, doctype, txt,
+			searchfield, start, page_length, filters, as_dict=as_dict)
 	elif not query and doctype in standard_queries:
 		# from standard queries
 		search_widget(doctype, txt, standard_queries[doctype][0],
@@ -140,15 +129,14 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 			formatted_fields = ['`tab%s`.`%s`' % (meta.name, f.strip()) for f in fields]
 
 			# find relevance as location of search term from the beginning of string `name`. used for sorting results.
-			formatted_fields.append("""locate({_txt}, `tab{doctype}`.`name`) as `_relevance`""".format(
-				_txt=frappe.db.escape((txt or "").replace("%", "")), doctype=doctype))
+			formatted_fields.append("""locate("{_txt}", `tab{doctype}`.`name`) as `_relevance`""".format(
+				_txt=frappe.db.escape((txt or "").replace("%", "")), doctype=frappe.db.escape(doctype)))
 
 
 			# In order_by, `idx` gets second priority, because it stores link count
 			from frappe.model.db_query import get_order_by
 			order_by_based_on_meta = get_order_by(doctype, meta)
-			# 2 is the index of _relevance column
-			order_by = "_relevance, {0}, `tab{1}`.idx desc".format(order_by_based_on_meta, doctype)
+			order_by = "if(_relevance, _relevance, 99999), {0}, `tab{1}`.idx desc".format(order_by_based_on_meta, doctype)
 
 			ignore_permissions = True if doctype == "DocType" else (cint(ignore_user_permissions) and has_permission(doctype))
 
@@ -164,11 +152,10 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 				order_by=order_by,
 				ignore_permissions=ignore_permissions,
 				reference_doctype=reference_doctype,
-				as_list=not as_dict,
-				strict=False)
+				as_list=not as_dict)
 
 			if doctype in UNTRANSLATED_DOCTYPES:
-				values = tuple([v for v in list(values) if re.search(re.escape(txt)+".*", (_(v.name) if as_dict else _(v[0])), re.IGNORECASE)])
+				values = tuple([v for v in list(values) if re.search(txt+".*", (_(v.name) if as_dict else _(v[0])), re.IGNORECASE)])
 
 			# remove _relevance from results
 			if as_dict:
@@ -180,17 +167,11 @@ def search_widget(doctype, txt, query=None, searchfield=None, start=0,
 
 def get_std_fields_list(meta, key):
 	# get additional search fields
-	sflist = ["name"]
-	if meta.search_fields:
-		for d in meta.search_fields.split(","):
-			if d.strip() not in sflist:
-				sflist.append(d.strip())
-
-	if meta.title_field and meta.title_field not in sflist:
-		sflist.append(meta.title_field)
-
-	if key not in sflist:
-		sflist.append(key)
+	sflist = meta.search_fields and meta.search_fields.split(",") or []
+	title_field = [meta.title_field] if (meta.title_field and meta.title_field not in sflist) else []
+	sflist = ['name'] + sflist + title_field
+	if not key in sflist:
+		sflist = sflist + [key]
 
 	return sflist
 
@@ -207,15 +188,3 @@ def scrub_custom_query(query, key, txt):
 	if '%s' in query:
 		query = query.replace('%s', ((txt or '') + '%'))
 	return query
-
-@wrapt.decorator
-def validate_and_sanitize_search_inputs(fn, instance, args, kwargs):
-	kwargs.update(dict(zip(fn.__code__.co_varnames, args)))
-	sanitize_searchfield(kwargs['searchfield'])
-	kwargs['start'] = cint(kwargs['start'])
-	kwargs['page_len'] = cint(kwargs['page_len'])
-
-	if kwargs['doctype'] and not frappe.db.exists('DocType', kwargs['doctype']):
-		return []
-
-	return fn(**kwargs)

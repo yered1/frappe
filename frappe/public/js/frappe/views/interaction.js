@@ -15,7 +15,7 @@ frappe.views.InteractionComposer = class InteractionComposer {
 			title: (me.title || me.subject || __("New Activity")),
 			no_submit_on_enter: true,
 			fields: me.get_fields(),
-			primary_action_label: __('Create'),
+			primary_action_label: __("Create"),
 			primary_action: function() {
 				me.create_action();
 			}
@@ -115,28 +115,38 @@ frappe.views.InteractionComposer = class InteractionComposer {
 	}
 
 	setup_attach() {
-		var fields = this.dialog.fields_dict;
-		var attach = $(fields.select_attachments.wrapper);
+		let fields = this.dialog.fields_dict;
+		let attach = $(fields.select_attachments.wrapper);
 
-		if (!this.attachments) {
-			this.attachments = [];
+		let me = this;
+		if (!me.attachments){
+			me.attachments = [];
 		}
 
 		let args = {
-			folder: 'Home/Attachments',
-			on_success: attachment => this.attachments.push(attachment)
+			args: {
+				from_form: 1,
+				folder:"Home/Attachments"
+			},
+			callback: function(attachment){
+				me.attachments.push(attachment);
+			},
+			max_width: null,
+			max_height: null
 		};
 
-		if (this.frm) {
+		if(me.frm) {
 			args = {
-				doctype: this.frm.doctype,
-				docname: this.frm.docname,
-				folder: 'Home/Attachments',
-				on_success: attachment => {
-					this.frm.attachments.attachment_uploaded(attachment);
-					this.render_attach();
-				}
+				args: (me.frm.attachments.get_args
+					? me.frm.attachments.get_args()
+					: { from_form: 1,folder:"Home/Attachments" }),
+				callback: function(attachment, r){
+					me.frm.attachments.attachment_uploaded(attachment, r);
+				},
+				max_width: me.frm.cscript ? me.frm.cscript.attachment_max_width : null,
+				max_height: me.frm.cscript ? me.frm.cscript.attachment_max_height : null
 			};
+
 		}
 
 		$("<h6 class='text-muted add-attachment' style='margin-top: 12px; cursor:pointer;'>"
@@ -144,10 +154,11 @@ frappe.views.InteractionComposer = class InteractionComposer {
 			<p class='add-more-attachments'>\
 			<a class='text-muted small'><i class='octicon octicon-plus' style='font-size: 12px'></i> "
 			+__("Add Attachment")+"</a></p>").appendTo(attach.empty());
-		attach
-			.find(".add-more-attachments a")
-			.on('click',() => new frappe.ui.FileUploader(args));
-		this.render_attach();
+		attach.find(".add-more-attachments a").on('click',this,function() {
+			me.upload = frappe.ui.get_upload_dialog(args);
+		});
+		me.render_attach();
+
 	}
 
 	render_attach(){
@@ -262,6 +273,7 @@ frappe.views.InteractionComposer = class InteractionComposer {
 					doctype: doc.doctype,
 					name: doc.name,
 					assign_to: assignee,
+					notify: 1
 				},
 				callback:function(r) {
 					if(!r.exc) {

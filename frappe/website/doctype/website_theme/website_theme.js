@@ -1,35 +1,31 @@
 // Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
+/* globals jscolor */
+frappe.provide("frappe.website_theme");
+$.extend(frappe.website_theme, {
+	color_variables: ["background_color", "top_bar_color", "top_bar_text_color",
+		"footer_color", "footer_text_color", "text_color", "link_color"]
+});
 
-frappe.ui.form.on('Website Theme', {
-	refresh(frm) {
-		frm.clear_custom_buttons();
-		frm.toggle_display(["module", "custom"], !frappe.boot.developer_mode);
+frappe.ui.form.on("Website Theme", "onload_post_render", function(frm) {
+	frappe.require('assets/frappe/js/lib/jscolor/jscolor.js', function() {
+		$.each(frappe.website_theme.color_variables, function(i, v) {
+			$(frm.fields_dict[v].input).addClass('color {required:false,hash:true}');
+		});
+		jscolor.bind();
+	});
+});
 
-		frm.trigger('set_default_theme_button_and_indicator');
+frappe.ui.form.on("Website Theme", "refresh", function(frm) {
+	frm.set_intro(__('Default theme is set in {0}', ['<a href="#Form/Website Settings">'
+		+ __('Website Settings') + '</a>']));
 
-		if (!frm.doc.custom && !frappe.boot.developer_mode) {
-			frm.set_read_only();
-			frm.disable_save();
-		} else {
-			frm.enable_save();
-		}
-	},
+	frm.toggle_display(["module", "custom"], !frappe.boot.developer_mode);
 
-	set_default_theme_button_and_indicator(frm) {
-		frappe.db.get_single_value('Website Settings', 'website_theme')
-			.then(value => {
-				if (value === frm.doc.name) {
-					frm.page.set_indicator(__('Default Theme'), 'green');
-				} else {
-					frm.page.clear_indicator();
-					// show set as default button
-					if (!frm.is_new() && !frm.is_dirty()) {
-						frm.add_custom_button(__('Set as Default Theme'), () => {
-							frm.call('set_as_default').then(() => frm.trigger('refresh'));
-						});
-					}
-				}
-			});
+	if (!frm.doc.custom && !frappe.boot.developer_mode) {
+		frm.set_read_only();
+		frm.disable_save();
+	} else {
+		frm.enable_save();
 	}
 });

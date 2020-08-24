@@ -5,7 +5,6 @@ from __future__ import unicode_literals, print_function
 
 import frappe
 import unittest, json, sys, os
-import time
 import xmlrunner
 import importlib
 from frappe.modules import load_doctype_module, get_module_name
@@ -17,7 +16,6 @@ from six.moves import reload_module
 from frappe.model.naming import revert_series_if_last
 
 unittest_runner = unittest.TextTestRunner
-SLOW_TEST_THRESHOLD = 2
 
 def xmlrunner_wrapper(output):
 	"""Convenience wrapper to keep method signature unchanged for XMLTestRunner and TextTestRunner"""
@@ -36,12 +34,9 @@ def main(app=None, module=None, doctype=None, verbose=False, tests=(),
 		with open(frappe.get_app_path(app, doctype_list_path), 'r') as f:
 			doctype = f.read().strip().splitlines()
 
-	if ui_tests:
-		print("Selenium testing has been deprecated\nUse bench --site {site_name} run-ui-tests for Cypress tests")
-
 	xmloutput_fh = None
 	if junit_xml_output:
-		xmloutput_fh = open(junit_xml_output, 'wb')
+		xmloutput_fh = open(junit_xml_output, 'w')
 		unittest_runner = xmlrunner_wrapper(xmloutput_fh)
 	else:
 		unittest_runner = unittest.TextTestRunner
@@ -68,13 +63,13 @@ def main(app=None, module=None, doctype=None, verbose=False, tests=(),
 				frappe.get_attr(fn)()
 
 		if doctype:
-			ret = run_tests_for_doctype(doctype, verbose, tests, force, profile, junit_xml_output=junit_xml_output)
+			ret = run_tests_for_doctype(doctype, verbose, tests, force, profile)
 		elif module:
-			ret = run_tests_for_module(module, verbose, tests, profile, junit_xml_output=junit_xml_output)
+			ret = run_tests_for_module(module, verbose, tests, profile)
 		else:
-			ret = run_all_tests(app, verbose, profile, ui_tests, failfast=failfast, junit_xml_output=junit_xml_output)
+			ret = run_all_tests(app, verbose, profile, ui_tests, failfast=failfast)
 
-		if frappe.db: frappe.db.commit()
+		frappe.db.commit()
 
 		# workaround! since there is no separate test db
 		frappe.clear_cache()
@@ -95,21 +90,7 @@ def set_test_email_config():
 		"admin_password": "admin"
 	})
 
-
-class TimeLoggingTestResult(unittest.TextTestResult):
-	def startTest(self, test):
-		self._started_at = time.time()
-		super(TimeLoggingTestResult, self).startTest(test)
-
-	def addSuccess(self, test):
-		elapsed = time.time() - self._started_at
-		name = self.getDescription(test)
-		if elapsed >= SLOW_TEST_THRESHOLD:
-			self.stream.write("\n{} ({:.03}s)\n".format(name, elapsed))
-		super(TimeLoggingTestResult, self).addSuccess(test)
-
-
-def run_all_tests(app=None, verbose=False, profile=False, ui_tests=False, failfast=False, junit_xml_output=False):
+def run_all_tests(app=None, verbose=False, profile=False, ui_tests=False, failfast=False):
 	import os
 
 	apps = [app] if app else frappe.get_installed_apps()
@@ -130,16 +111,11 @@ def run_all_tests(app=None, verbose=False, profile=False, ui_tests=False, failfa
 					_add_test(app, path, filename, verbose,
 						test_suite, ui_tests)
 
-	if junit_xml_output:
-		runner = unittest_runner(verbosity=1+(verbose and 1 or 0), failfast=failfast)
-	else:
-		runner = unittest_runner(resultclass=TimeLoggingTestResult, verbosity=1+(verbose and 1 or 0), failfast=failfast)
-
 	if profile:
 		pr = cProfile.Profile()
 		pr.enable()
 
-	out = runner.run(test_suite)
+	out = unittest_runner(verbosity=1+(verbose and 1 or 0), failfast=failfast).run(test_suite)
 
 	if profile:
 		pr.disable()
@@ -150,7 +126,7 @@ def run_all_tests(app=None, verbose=False, profile=False, ui_tests=False, failfa
 
 	return out
 
-def run_tests_for_doctype(doctypes, verbose=False, tests=(), force=False, profile=False, junit_xml_output=False):
+def run_tests_for_doctype(doctypes, verbose=False, tests=(), force=False, profile=False):
 	modules = []
 	if not isinstance(doctypes, (list, tuple)):
 		doctypes = [doctypes]
@@ -168,17 +144,32 @@ def run_tests_for_doctype(doctypes, verbose=False, tests=(), force=False, profil
 		make_test_records(doctype, verbose=verbose, force=force)
 		modules.append(importlib.import_module(test_module))
 
-	return _run_unittest(modules, verbose=verbose, tests=tests, profile=profile, junit_xml_output=junit_xml_output)
+	return _run_unittest(modules, verbose=verbose, tests=tests, profile=profile)
 
-def run_tests_for_module(module, verbose=False, tests=(), profile=False, junit_xml_output=False):
+def run_tests_for_module(module, verbose=False, tests=(), profile=False):
 	module = importlib.import_module(module)
 	if hasattr(module, "test_dependencies"):
 		for doctype in module.test_dependencies:
 			make_test_records(doctype, verbose=verbose)
 
-	return _run_unittest(module, verbose=verbose, tests=tests, profile=profile, junit_xml_output=junit_xml_output)
+	return _run_unittest(module, verbose=verbose, tests=tests, profile=profile)
 
-def _run_unittest(modules, verbose=False, tests=(), profile=False, junit_xml_output=False):
+def run_setup_wizard_ui_test(app=None, verbose=False, profile=False):
+	'''Run setup wizard UI test using test_test_runner'''
+	frappe.flags.run_setup_wizard_ui_test = 1
+	return run_ui_tests(app=app, test=None, verbose=verbose, profile=profile)
+
+def run_ui_tests(app=None, test=None, test_list=None, verbose=False, profile=False):
+	'''Run a single unit test for UI using test_test_runner'''
+	module = importlib.import_module('frappe.tests.ui.test_test_runner')
+	frappe.flags.ui_test_app = app
+	if test_list:
+		frappe.flags.ui_test_list = test_list
+	else:
+		frappe.flags.ui_test_path = test
+	return _run_unittest(module, verbose=verbose, tests=(), profile=profile)
+
+def _run_unittest(modules, verbose=False, tests=(), profile=False):
 	test_suite = unittest.TestSuite()
 
 	if not isinstance(modules, (list, tuple)):
@@ -194,18 +185,13 @@ def _run_unittest(modules, verbose=False, tests=(), profile=False, junit_xml_out
 		else:
 			test_suite.addTest(module_test_cases)
 
-	if junit_xml_output:
-		runner = unittest_runner(verbosity=1+(verbose and 1 or 0))
-	else:
-		runner = unittest_runner(resultclass=TimeLoggingTestResult, verbosity=1+(verbose and 1 or 0))
-
 	if profile:
 		pr = cProfile.Profile()
 		pr.enable()
 
 	frappe.flags.tests_verbose = verbose
 
-	out = runner.run(test_suite)
+	out = unittest_runner(verbosity=1+(verbose and 1 or 0)).run(test_suite)
 
 
 	if profile:
@@ -248,11 +234,10 @@ def _add_test(app, path, filename, verbose, test_suite=None, ui_tests=False):
 
 	if os.path.basename(os.path.dirname(path))=="doctype":
 		txt_file = os.path.join(path, filename[5:].replace(".py", ".json"))
-		if os.path.exists(txt_file):
-			with open(txt_file, 'r') as f:
-				doc = json.loads(f.read())
-			doctype = doc["name"]
-			make_test_records(doctype, verbose)
+		with open(txt_file, 'r') as f:
+			doc = json.loads(f.read())
+		doctype = doc["name"]
+		make_test_records(doctype, verbose)
 
 	test_suite.addTest(unittest.TestLoader().loadTestsFromModule(module))
 

@@ -19,31 +19,23 @@ import os
 
 class PatchError(Exception): pass
 
-def run_all(skip_failing=False):
+def run_all():
 	"""run all pending patches"""
 	executed = [p[0] for p in frappe.db.sql("""select patch from `tabPatch Log`""")]
 
 	frappe.flags.final_patches = []
-
-	def run_patch(patch):
-		try:
+	for patch in get_all_patches():
+		if patch and (patch not in executed):
 			if not run_single(patchmodule = patch):
 				log(patch + ': failed: STOPPED')
 				raise PatchError(patch)
-		except Exception:
-			if not skip_failing:
-				raise
-			else:
-				log('Failed to execute patch')
-
-	for patch in get_all_patches():
-		if patch and (patch not in executed):
-			run_patch(patch)
 
 	# patches to be run in the end
 	for patch in frappe.flags.final_patches:
 		patch = patch.replace('finally:', '')
-		run_patch(patch)
+		if not run_single(patchmodule = patch):
+			log(patch + ': failed: STOPPED')
+			raise PatchError(patch)
 
 def get_all_patches():
 	patches = []
@@ -119,12 +111,11 @@ def executed(patchmodule):
 	# 	print "Patch %s already executed in %s" % (patchmodule, frappe.db.cur_db_name)
 	return done
 
-def block_user(block, msg=None):
+def block_user(block):
 	"""stop/start execution till patch is run"""
 	frappe.local.flags.in_patch = block
 	frappe.db.begin()
-	if not msg:
-		msg = "Patches are being executed in the system. Please try again in a few moments."
+	msg = "Patches are being executed in the system. Please try again in a few moments."
 	frappe.db.set_global('__session_status', block and 'stop' or None)
 	frappe.db.set_global('__session_status_message', block and msg or None)
 	frappe.db.commit()

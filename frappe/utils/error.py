@@ -21,7 +21,7 @@ def make_error_snapshot(exception):
 	if frappe.conf.disable_error_snapshot:
 		return
 
-	logger = frappe.logger(with_more_info=True)
+	logger = frappe.logger(__name__, with_more_info=False)
 
 	try:
 		error_id = '{timestamp:s}-{ip:s}-{hash:s}'.format(
@@ -123,13 +123,22 @@ def get_snapshot(exception, context=10):
 	# add exception type, value and attributes
 	if isinstance(evalue, BaseException):
 		for name in dir(evalue):
-			if name != 'messages' and not name.startswith('__'):
+			# prevent py26 DeprecationWarning
+			if (name != 'messages' or sys.version_info < (2.6)) and not name.startswith('__'):
 				value = pydoc.text.repr(getattr(evalue, name))
+
+				# render multilingual string properly
+				if type(value)==str and value.startswith(b"u'"):
+					value = eval(value)
+
 				s['exception'][name] = encode(value)
 
 	# add all local values (of last frame) to the snapshot
 	for name, value in locals.items():
-		s['locals'][name] = value if isinstance(value, six.text_type) else pydoc.text.repr(value)
+		if type(value)==str and value.startswith(b"u'"):
+			value = eval(value)
+
+		s['locals'][name] = pydoc.text.repr(value)
 
 	return s
 
@@ -177,7 +186,7 @@ def collect_error_snapshots():
 def clear_old_snapshots():
 	"""Clear snapshots that are older than a month"""
 	frappe.db.sql("""delete from `tabError Snapshot`
-		where creation < (NOW() - INTERVAL '1' MONTH)""")
+		where creation < date_sub(now(), interval 1 month)""")
 
 	path = get_error_snapshot_path()
 	today = datetime.datetime.now()

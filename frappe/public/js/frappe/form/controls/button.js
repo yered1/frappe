@@ -1,12 +1,7 @@
 frappe.ui.form.ControlButton = frappe.ui.form.ControlData.extend({
-	can_write() {
-		// should be always true in case of button
-		return true;
-	},
 	make_input: function() {
 		var me = this;
-		const btn_type = this.df.primary ? 'btn-primary': 'btn-default';
-		this.$input = $(`<button class="btn btn-xs ${btn_type}">`)
+		this.$input = $('<button class="btn btn-default btn-xs">')
 			.prependTo(me.input_area)
 			.on("click", function() {
 				me.onclick();
@@ -17,32 +12,15 @@ frappe.ui.form.ControlButton = frappe.ui.form.ControlData.extend({
 		this.toggle_label(false);
 	},
 	onclick: function() {
-		if (this.frm && this.frm.doc) {
-			if (this.frm.script_manager.has_handlers(this.df.fieldname, this.doctype)) {
+		if(this.frm && this.frm.doc) {
+			if(this.frm.script_manager.has_handlers(this.df.fieldname, this.doctype)) {
 				this.frm.script_manager.trigger(this.df.fieldname, this.doctype, this.docname);
 			} else {
-				if (this.df.options) {
-					this.run_server_script();
-				}
+				this.frm.runscript(this.df.options, this);
 			}
-		} else if (this.df.click) {
-			this.df.click();
 		}
-	},
-	run_server_script: function() {
-		// DEPRECATE
-		var me = this;
-		if(this.frm && this.frm.docname) {
-			frappe.call({
-				method: "runserverobj",
-				args: {'docs': this.frm.doc, 'method': this.df.options },
-				btn: this.$input,
-				callback: function(r) {
-					if(!r.exc) {
-						me.frm.refresh_fields();
-					}
-				}
-			});
+		else if(this.df.click) {
+			this.df.click();
 		}
 	},
 	hide() {

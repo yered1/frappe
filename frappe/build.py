@@ -1,79 +1,29 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 
-from __future__ import print_function, unicode_literals
-
-import os
-import re
-import json
-import shutil
+from __future__ import unicode_literals, print_function
+from frappe.utils.minify import JavascriptMinify
 import warnings
-import tempfile
-from distutils.spawn import find_executable
 
 from six import iteritems, text_type
+import subprocess
+from distutils.spawn import find_executable
 
-import frappe
-from frappe.utils.minify import JavascriptMinify
+"""
+Build the `public` folders and setup languages
+"""
 
+import os, frappe, json, shutil, re
 
-timestamps = {}
 app_paths = None
-
-
-def symlink(target, link_name, overwrite=False):
-	'''
-	Create a symbolic link named link_name pointing to target.
-	If link_name exists then FileExistsError is raised, unless overwrite=True.
-	When trying to overwrite a directory, IsADirectoryError is raised.
-
-	Source: https://stackoverflow.com/a/55742015/10309266
-	'''
-
-	if not overwrite:
-		return os.symlink(target, link_name)
-
-	# os.replace() may fail if files are on different filesystems
-	link_dir = os.path.dirname(link_name)
-
-	# Create link to target with temporary filename
-	while True:
-		temp_link_name = tempfile.mktemp(dir=link_dir)
-
-		# os.* functions mimic as closely as possible system functions
-		# The POSIX symlink() returns EEXIST if link_name already exists
-		# https://pubs.opengroup.org/onlinepubs/9699919799/functions/symlink.html
-		try:
-			os.symlink(target, temp_link_name)
-			break
-		except FileExistsError:
-			pass
-
-	# Replace link_name with temp_link_name
-	try:
-		# Pre-empt os.replace on a directory with a nicer message
-		if os.path.isdir(link_name):
-			raise IsADirectoryError("Cannot symlink over existing directory: '{}'".format(link_name))
-		try:
-			os.replace(temp_link_name, link_name)
-		except AttributeError:
-			os.renames(temp_link_name, link_name)
-	except:
-		if os.path.islink(temp_link_name):
-			os.remove(temp_link_name)
-		raise
-
-
 def setup():
 	global app_paths
 	pymodules = []
 	for app in frappe.get_all_apps(True):
 		try:
 			pymodules.append(frappe.get_module(app))
-		except ImportError:
-			pass
+		except ImportError: pass
 	app_paths = [os.path.dirname(pymodule.__file__) for pymodule in pymodules]
-
 
 def get_node_pacman():
 	pacmans = ['yarn', 'npm']
@@ -82,7 +32,6 @@ def get_node_pacman():
 		if exec_:
 			return exec_
 	raise ValueError('No Node.js Package Manager found.')
-
 
 def bundle(no_compress, app=None, make_copy=False, restore=False, verbose=False):
 	"""concat / minify js files"""
@@ -100,7 +49,6 @@ def bundle(no_compress, app=None, make_copy=False, restore=False, verbose=False)
 	check_yarn()
 	frappe.commands.popen(command, cwd=frappe_app_path)
 
-
 def watch(no_compress):
 	"""watch and rebuild if necessary"""
 	setup()
@@ -110,34 +58,32 @@ def watch(no_compress):
 	frappe_app_path = os.path.abspath(os.path.join(app_paths[0], '..'))
 	check_yarn()
 	frappe_app_path = frappe.get_app_path('frappe', '..')
-	frappe.commands.popen('{pacman} run watch'.format(pacman=pacman), cwd=frappe_app_path)
-
+	frappe.commands.popen('{pacman} run watch'.format(pacman=pacman), cwd = frappe_app_path)
 
 def check_yarn():
+	from distutils.spawn import find_executable
 	if not find_executable('yarn'):
-		print('Please install yarn using below command and try again.\nnpm install -g yarn')
-
+		print('Please install yarn using below command and try again.')
+		print('npm install -g yarn')
+		return
 
 def make_asset_dirs(make_copy=False, restore=False):
 	# don't even think of making assets_path absolute - rm -rf ahead.
 	assets_path = os.path.join(frappe.local.sites_path, "assets")
+	for dir_path in [
+			os.path.join(assets_path, 'js'),
+			os.path.join(assets_path, 'css')]:
 
-	for dir_path in [os.path.join(assets_path, 'js'), os.path.join(assets_path, 'css')]:
 		if not os.path.exists(dir_path):
 			os.makedirs(dir_path)
 
+	# symlink app/public > assets/app
 	for app_name in frappe.get_all_apps(True):
 		pymodule = frappe.get_module(app_name)
 		app_base_path = os.path.abspath(os.path.dirname(pymodule.__file__))
 
 		symlinks = []
-		app_public_path = os.path.join(app_base_path, 'public')
-		# app/public > assets/app
-		symlinks.append([app_public_path, os.path.join(assets_path, app_name)])
-		# app/node_modules > assets/app/node_modules
-		if os.path.exists(os.path.abspath(app_public_path)):
-			symlinks.append([os.path.join(app_base_path, '..', 'node_modules'), os.path.join(
-				assets_path, app_name, 'node_modules')])
+		symlinks.append([os.path.join(app_base_path, 'public'), os.path.join(assets_path, app_name)])
 
 		app_doc_path = None
 		if os.path.isdir(os.path.join(app_base_path, 'docs')):
@@ -147,8 +93,7 @@ def make_asset_dirs(make_copy=False, restore=False):
 			app_doc_path = os.path.join(app_base_path, 'www', 'docs')
 
 		if app_doc_path:
-			symlinks.append([app_doc_path, os.path.join(
-				assets_path, app_name + '_docs')])
+			symlinks.append([app_doc_path, os.path.join(assets_path, app_name + '_docs')])
 
 		for source, target in symlinks:
 			source = os.path.abspath(source)
@@ -162,7 +107,7 @@ def make_asset_dirs(make_copy=False, restore=False):
 						shutil.copytree(source, target)
 				elif make_copy:
 					if os.path.exists(target):
-						warnings.warn('Target {target} already exists.'.format(target=target))
+						warnings.warn('Target {target} already exists.'.format(target = target))
 					else:
 						shutil.copytree(source, target)
 				else:
@@ -171,21 +116,16 @@ def make_asset_dirs(make_copy=False, restore=False):
 							os.unlink(target)
 						else:
 							shutil.rmtree(target)
-					try:
-						symlink(source, target, overwrite=True)
-					except OSError:
-						print('Cannot link {} to {}'.format(source, target))
+					os.symlink(source, target)
 			else:
 				# warnings.warn('Source {source} does not exist.'.format(source = source))
 				pass
-
 
 def build(no_compress=False, verbose=False):
 	assets_path = os.path.join(frappe.local.sites_path, "assets")
 
 	for target, sources in iteritems(get_build_maps()):
 		pack(os.path.join(assets_path, target), sources, no_compress, verbose)
-
 
 def get_build_maps():
 	"""get all build.jsons with absolute paths"""
@@ -202,8 +142,7 @@ def get_build_maps():
 						source_paths = []
 						for source in sources:
 							if isinstance(source, list):
-								s = frappe.get_pymodule_path(
-									source[0], *source[1].split("/"))
+								s = frappe.get_pymodule_path(source[0], *source[1].split("/"))
 							else:
 								s = os.path.join(app_path, source)
 							source_paths.append(s)
@@ -214,6 +153,7 @@ def get_build_maps():
 					print('JSON syntax error {0}'.format(str(e)))
 	return build_maps
 
+timestamps = {}
 
 def pack(target, sources, no_compress, verbose):
 	from six import StringIO
@@ -223,8 +163,7 @@ def pack(target, sources, no_compress, verbose):
 
 	for f in sources:
 		suffix = None
-		if ':' in f:
-			f, suffix = f.split(':')
+		if ':' in f: f, suffix = f.split(':')
 		if not os.path.exists(f) or os.path.isdir(f):
 			print("did not find " + f)
 			continue
@@ -235,7 +174,7 @@ def pack(target, sources, no_compress, verbose):
 
 			extn = f.rsplit(".", 1)[1]
 
-			if outtype == "js" and extn == "js" and (not no_compress) and suffix != "concat" and (".min." not in f):
+			if outtype=="js" and extn=="js" and (not no_compress) and suffix!="concat" and (".min." not in f):
 				tmpin, tmpout = StringIO(data.encode('utf-8')), StringIO()
 				jsm.minify(tmpin, tmpout)
 				minified = tmpout.getvalue()
@@ -244,7 +183,7 @@ def pack(target, sources, no_compress, verbose):
 
 				if verbose:
 					print("{0}: {1}k".format(f, int(len(minified) / 1024)))
-			elif outtype == "js" and extn == "html":
+			elif outtype=="js" and extn=="html":
 				# add to frappe.templates
 				outtxt += html_to_js_template(f, data)
 			else:
@@ -260,12 +199,10 @@ def pack(target, sources, no_compress, verbose):
 
 	print("Wrote %s - %sk" % (target, str(int(os.path.getsize(target)/1024))))
 
-
 def html_to_js_template(path, content):
 	'''returns HTML template content as Javascript code, adding it to `frappe.templates`'''
-	return """frappe.templates["{key}"] = '{content}';\n""".format(
+	return """frappe.templates["{key}"] = '{content}';\n""".format(\
 		key=path.rsplit("/", 1)[-1][:-5], content=scrub_html_template(content))
-
 
 def scrub_html_template(content):
 	'''Returns HTML content with removed whitespace and comments'''
@@ -273,26 +210,23 @@ def scrub_html_template(content):
 	content = re.sub("\s+", " ", content)
 
 	# strip comments
-	content = re.sub("(<!--.*?-->)", "", content)
+	content =  re.sub("(<!--.*?-->)", "", content)
 
 	return content.replace("'", "\'")
-
 
 def files_dirty():
 	for target, sources in iteritems(get_build_maps()):
 		for f in sources:
-			if ':' in f:
-				f, suffix = f.split(':')
-			if not os.path.exists(f) or os.path.isdir(f):
-				continue
+			if ':' in f: f, suffix = f.split(':')
+			if not os.path.exists(f) or os.path.isdir(f): continue
 			if os.path.getmtime(f) != timestamps.get(f):
 				print(f + ' dirty')
 				return True
 	else:
 		return False
 
-
 def compile_less():
+	from distutils.spawn import find_executable
 	if not find_executable("lessc"):
 		return
 

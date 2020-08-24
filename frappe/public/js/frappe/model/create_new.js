@@ -85,7 +85,7 @@ $.extend(frappe.model, {
 
 	set_default_values: function(doc, parent_doc) {
 		var doctype = doc.doctype;
-		var docfields = frappe.meta.get_docfields(doctype);
+		var docfields = frappe.meta.docfield_list[doctype] || [];
 		var updated = [];
 		for(var fid=0;fid<docfields.length;fid++) {
 			var f = docfields[fid];
@@ -114,7 +114,7 @@ $.extend(frappe.model, {
 		if(meta && meta.istable) return;
 
 		// create empty rows for mandatory table fields
-		frappe.meta.get_docfields(doc.doctype).forEach(function(df) {
+		frappe.meta.docfield_list[doc.doctype].forEach(function(df) {
 			if(df.fieldtype==='Table' && df.reqd) {
 				frappe.model.add_child(doc, df.fieldname);
 			}
@@ -125,9 +125,8 @@ $.extend(frappe.model, {
 		var user_default = "";
 		var user_permissions = frappe.defaults.get_user_permissions();
 		let allowed_records = [];
-		let default_doc = null;
 		if(user_permissions) {
-			({allowed_records, default_doc} = frappe.perm.filter_allowed_docs_for_doctype(user_permissions[df.options], doc.doctype));
+			allowed_records = frappe.perm.get_allowed_docs_for_doctype(user_permissions[df.options], doc.doctype);
 		}
 		var meta = frappe.get_meta(doc.doctype);
 		var has_user_permissions = (df.fieldtype==="Link"
@@ -137,9 +136,11 @@ $.extend(frappe.model, {
 
 		// don't set defaults for "User" link field using User Permissions!
 		if (df.fieldtype==="Link" && df.options!=="User") {
-			// If user permission has Is Default enabled or single-user permission has found against respective doctype.
-			if (has_user_permissions && default_doc) {
-				return default_doc;
+			// 1 - look in user permissions for document_type=="Setup".
+			// We don't want to include permissions of transactions to be used for defaults.
+			if (df.linked_document_type==="Setup"
+				&& has_user_permissions && allowed_records.length===1) {
+				return allowed_records[0];
 			}
 
 			if(!df.ignore_user_permissions) {
@@ -261,7 +262,7 @@ $.extend(frappe.model, {
 				&& !(df && (!from_amend && cint(df.no_copy) == 1))) {
 
 				var value = doc[key] || [];
-				if (frappe.model.table_fields.includes(df.fieldtype)) {
+				if (df.fieldtype === "Table") {
 					for (var i = 0, j = value.length; i < j; i++) {
 						var d = value[i];
 						frappe.model.copy_doc(d, from_amend, newdoc, df.fieldname);
@@ -321,12 +322,6 @@ $.extend(frappe.model, {
 
 frappe.create_routes = {};
 frappe.new_doc = function (doctype, opts, init_callback) {
-	if (doctype === 'File') {
-		new frappe.ui.FileUploader({
-			folder: opts ? opts.folder : 'Home'
-		});
-		return;
-	}
 	return new Promise(resolve => {
 		if(opts && $.isPlainObject(opts)) {
 			frappe.route_options = opts;

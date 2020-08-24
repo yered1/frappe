@@ -80,10 +80,8 @@ $.extend(frappe.model, {
 
 		locals[doc.doctype][doc.name] = doc;
 
-		let meta = frappe.get_meta(doc.doctype);
-		let is_table = meta ? meta.istable : doc.parentfield;
 		// add child docs to locals
-		if (!is_table) {
+		if(!doc.parentfield) {
 			for(var i in doc) {
 				var value = doc[i];
 
@@ -108,10 +106,10 @@ $.extend(frappe.model, {
 				if (source[key] == undefined) delete target[key];
 			});
 		}
-
+		
 		for (let fieldname in doc) {
 			let df = frappe.meta.get_field(doc.doctype, fieldname);
-			if (df && frappe.model.table_fields.includes(df.fieldtype)) {
+			if (df && df.fieldtype === 'Table') {
 				// table
 				if (!(doc[fieldname] instanceof Array)) {
 					doc[fieldname] = [];
@@ -120,7 +118,7 @@ $.extend(frappe.model, {
 				if (!(local_doc[fieldname] instanceof Array)) {
 					local_doc[fieldname] = [];
 				}
-
+				
 				// child table, override each row and append new rows if required
 				for (let i=0; i < doc[fieldname].length; i++ ) {
 					let d = doc[fieldname][i];
@@ -146,7 +144,7 @@ $.extend(frappe.model, {
 						// row exists, just copy the values
 						Object.assign(local_d, d);
 						clear_keys(d, local_d);
-
+						
 					} else {
 						local_doc[fieldname].push(d);
 						if (!d.parent) d.parent = doc.name;
@@ -172,7 +170,7 @@ $.extend(frappe.model, {
 				local_doc[fieldname] = doc[fieldname];
 			}
 		}
-
+		
 		// clear keys on parent
 		clear_keys(doc, local_doc);
 	}

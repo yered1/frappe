@@ -6,9 +6,8 @@ from __future__ import unicode_literals
 """Allow adding of likes to documents"""
 
 import frappe, json
-from frappe.database.schema import add_column
+from frappe.model.db_schema import add_column
 from frappe import _
-from frappe.desk.form.document_follow import follow_document
 from frappe.utils import get_link_to_form
 
 @frappe.whitelist()
@@ -34,6 +33,10 @@ def _toggle_like(doctype, name, add, user=None):
 	try:
 		liked_by = frappe.db.get_value(doctype, name, "_liked_by")
 
+		# CHANGED: Allow someone to like their own documents as it also works as a bookmark
+		# if owner==frappe.session.user and add=="Yes":
+		# 	frappe.throw(_("You cannot like something that you created"))
+
 		if liked_by:
 			liked_by = json.loads(liked_by)
 		else:
@@ -43,7 +46,7 @@ def _toggle_like(doctype, name, add, user=None):
 			if user not in liked_by:
 				liked_by.append(user)
 				add_comment(doctype, name)
-				follow_document(doctype, name, user)
+
 		else:
 			if user in liked_by:
 				liked_by.remove(user)
@@ -51,8 +54,8 @@ def _toggle_like(doctype, name, add, user=None):
 
 		frappe.db.set_value(doctype, name, "_liked_by", json.dumps(liked_by), update_modified=False)
 
-	except frappe.db.ProgrammingError as e:
-		if frappe.db.is_column_missing(e):
+	except Exception as e:
+		if isinstance(e.args, (tuple, list)) and e.args and e.args[0]==1054:
 			add_column(doctype, "_liked_by", "Text")
 			_toggle_like(doctype, name, add, user)
 		else:
@@ -61,12 +64,13 @@ def _toggle_like(doctype, name, add, user=None):
 def remove_like(doctype, name):
 	"""Remove previous Like"""
 	# remove Comment
-	frappe.delete_doc("Comment", [c.name for c in frappe.get_all("Comment",
+	frappe.delete_doc("Communication", [c.name for c in frappe.get_all("Communication",
 		filters={
-			"comment_type": "Like",
+			"communication_type": "Comment",
 			"reference_doctype": doctype,
 			"reference_name": name,
 			"owner": frappe.session.user,
+			"comment_type": "Like"
 		}
 	)], ignore_permissions=True)
 

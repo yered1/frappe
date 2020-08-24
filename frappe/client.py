@@ -7,9 +7,9 @@ from frappe import _
 import frappe.model
 import frappe.utils
 import json, os
-from frappe.utils import get_safe_filters
 
 from six import iteritems, string_types, integer_types
+from frappe.utils.file_manager import save_file
 
 '''
 Handle RESTful requests that are mapped to the `/api/resource` route.
@@ -36,7 +36,7 @@ def get_list(doctype, fields=None, filters=None, order_by=None,
 
 @frappe.whitelist()
 def get_count(doctype, filters=None, debug=False, cache=False):
-	return frappe.db.count(doctype, get_safe_filters(filters), debug, cache)
+	return frappe.db.count(doctype, filters, debug, cache)
 
 @frappe.whitelist()
 def get(doctype, name=None, filters=None, parent=None):
@@ -70,35 +70,30 @@ def get_value(doctype, fieldname, filters=None, as_dict=True, debug=False, paren
 		check_parent_permission(parent, doctype)
 
 	if not frappe.has_permission(doctype):
-		frappe.throw(_("No permission for {0}").format(doctype), frappe.PermissionError)
-
-	filters = get_safe_filters(filters)
-	if isinstance(filters, string_types):
-		filters = {"name": filters}
+		frappe.throw(_("No permission for {0}".format(doctype)), frappe.PermissionError)
 
 	try:
-		fields = json.loads(fieldname)
+		filters = json.loads(filters)
+
+		if isinstance(filters, (integer_types, float)):
+			filters = frappe.as_unicode(filters)
+
+	except (TypeError, ValueError):
+		# filters are not passesd, not json
+		pass
+
+	try:
+		fieldname = json.loads(fieldname)
 	except (TypeError, ValueError):
 		# name passed, not json
-		fields = [fieldname]
+		pass
 
 	# check whether the used filters were really parseable and usable
 	# and did not just result in an empty string or dict
 	if not filters:
 		filters = None
 
-
-	if frappe.get_meta(doctype).issingle:
-		value = frappe.db.get_values_from_single(fields, filters, doctype, as_dict=as_dict, debug=debug)
-	else:
-		value = frappe.get_list(doctype, filters=filters, fields=fields, debug=debug, limit=1)
-
-	if as_dict:
-		value = value[0] if value else {}
-	else:
-		value = value[0].fieldname
-
-	return value
+	return frappe.db.get_value(doctype, filters, fieldname, as_dict=as_dict, debug=debug)
 
 @frappe.whitelist()
 def get_single_value(doctype, field):
@@ -356,27 +351,13 @@ def attach_file(filename=None, filedata=None, doctype=None, docname=None, folder
 	if not doc.has_permission():
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	_file = frappe.get_doc({
-		"doctype": "File",
-		"file_name": filename,
-		"attached_to_doctype": doctype,
-		"attached_to_name": docname,
-		"attached_to_field": docfield,
-		"folder": folder,
-		"is_private": is_private,
-		"content": filedata,
-		"decode": decode_base64})
-	_file.save()
+	f = save_file(filename, filedata, doctype, docname, folder, decode_base64, is_private, docfield)
 
 	if docfield and doctype:
-		doc.set(docfield, _file.file_url)
+		doc.set(docfield, f.file_url)
 		doc.save()
 
-	return _file.as_dict()
-
-@frappe.whitelist()
-def get_hooks(hook, app_name=None):
-	return frappe.get_hooks(hook, app_name)
+	return f.as_dict()
 
 def check_parent_permission(parent, child_doctype):
 	if parent:
@@ -389,15 +370,3 @@ def check_parent_permission(parent, child_doctype):
 			return
 	# Either parent not passed or the user doesn't have permission on parent doctype of child table!
 	raise frappe.PermissionError
-
-@frappe.whitelist()
-def is_document_amended(doctype, docname):
-	if frappe.permissions.has_permission(doctype):
-		try:
-			return frappe.db.exists(doctype, {
-				'amended_from': docname
-			})
-		except frappe.db.InternalError:
-			pass
-
-	return False

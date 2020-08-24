@@ -185,10 +185,3 @@ typings/
 
 # next.js build output
 .next
-
-# cypress
-cypress/screenshots
-cypress/videos
-
-# JetBrains IDEs
-.idea/

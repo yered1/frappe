@@ -58,6 +58,5 @@ setup(
 	cmdclass = \
 	{
 		'clean': CleanCommand
-	},
-	python_requires='>=3.6'
+	}
 )

@@ -8,7 +8,7 @@ frappe.provide('frappe.meta.doctypes');
 frappe.provide("frappe.meta.precision_map");
 
 frappe.get_meta = function(doctype) {
-	return locals['DocType'] ? locals['DocType'][doctype] : null;
+	return locals["DocType"][doctype];
 }
 
 $.extend(frappe.meta, {
@@ -133,13 +133,12 @@ $.extend(frappe.meta, {
 	},
 
 	has_field: function(dt, fn) {
-		let docfield_map = frappe.meta.docfield_map[dt];
-		return docfield_map && docfield_map[fn];
+		return frappe.meta.docfield_map[dt][fn];
 	},
 
 	get_table_fields: function(dt) {
 		return $.map(frappe.meta.docfield_list[dt], function(d) {
-			return frappe.model.table_fields.includes(d.fieldtype) ? d : null});
+			return d.fieldtype==='Table' ? d : null});
 	},
 
 	get_doctype_for_field: function(doctype, key) {
@@ -161,15 +160,16 @@ $.extend(frappe.meta, {
 
 			if(!out) {
 				// eslint-disable-next-line
-				console.log(__('Warning: Unable to find {0} in any table related to {1}', [key, __(doctype)]));
+				console.log(__('Warning: Unable to find {0} in any table related to {1}', [
+					key, __(doctype)]));
 			}
 		}
 		return out;
 	},
 
 	get_parentfield: function(parent_dt, child_dt) {
-		var df = (frappe.get_doc("DocType", parent_dt).fields || [])
-			.filter(df => frappe.model.table_fields.includes(df.fieldtype) && df.options===child_dt)
+		var df = (frappe.get_doc("DocType", parent_dt).fields || []).filter(function(d)
+			{ return d.fieldtype==="Table" && d.options===child_dt })
 		if(!df.length)
 			throw "parentfield not found for " + parent_dt + ", " + child_dt;
 		return df[0].fieldname;
@@ -195,17 +195,12 @@ $.extend(frappe.meta, {
 	get_print_formats: function(doctype) {
 		var print_format_list = ["Standard"];
 		var default_print_format = locals.DocType[doctype].default_print_format;
-		let enable_raw_printing = frappe.model.get_doc(":Print Settings", "Print Settings").enable_raw_printing;
+
 		var print_formats = frappe.get_list("Print Format", {doc_type: doctype})
 			.sort(function(a, b) { return (a > b) ? 1 : -1; });
 		$.each(print_formats, function(i, d) {
-			if (
-				!in_list(print_format_list, d.name)
-				&& d.print_format_type !== 'JS'
-				&& (cint(enable_raw_printing) || !d.raw_printing)
-			) {
+			if(!in_list(print_format_list, d.name) && d.print_format_type !== 'Js')
 				print_format_list.push(d.name);
-			}
 		});
 
 		if(default_print_format && default_print_format != "Standard") {
@@ -252,7 +247,7 @@ $.extend(frappe.meta, {
 
 	get_field_precision: function(df, doc) {
 		var precision = null;
-		if (df && df.precision) {
+		if (df && cint(df.precision)) {
 			precision = cint(df.precision);
 		} else if(df && df.fieldtype === "Currency") {
 			precision = cint(frappe.defaults.get_default("currency_precision"));
@@ -265,5 +260,5 @@ $.extend(frappe.meta, {
 			precision = cint(frappe.defaults.get_default("float_precision")) || 3;
 		}
 		return precision;
-	}
+	},
 });

@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 
 import frappe
 from frappe import _
-from six.moves.urllib.parse import parse_qsl
+from six.moves.urllib.parse import parse_qs
 from frappe.twofactor import get_qr_svg_code
 
 def get_context(context):
@@ -15,11 +15,10 @@ def get_context(context):
 def get_query_key():
 	'''Return query string arg.'''
 	query_string = frappe.local.request.query_string
-	query = dict(parse_qsl(query_string))
-	query = {key.decode(): val.decode() for key, val in query.items()}
+	query = parse_qs(query_string)
 	if not 'k' in list(query):
 		frappe.throw(_('Not Permitted'),frappe.PermissionError)
-	query = (query['k']).strip()
+	query = (query['k'][0]).strip()
 	if False in [i.isalpha() or i.isdigit() for i in query]:
 		frappe.throw(_('Not Permitted'),frappe.PermissionError)
 	return query
@@ -35,4 +34,4 @@ def get_user_svg_from_cache():
 		frappe.throw(_('Not Permitted'), frappe.PermissionError)
 	user = frappe.get_doc('User',user)
 	svg = get_qr_svg_code(totp_uri)
-	return (user,svg.decode())
+	return (user,svg)

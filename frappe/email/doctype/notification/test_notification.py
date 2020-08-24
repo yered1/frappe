@@ -63,7 +63,7 @@ class TestNotification(unittest.TestCase):
 		notification.message = "test"
 
 		recipent = frappe.new_doc("Notification Recipient")
-		recipent.receiver_by_document_field = "owner"
+		recipent.email_by_document_field = "owner"
 
 		notification.recipents = recipent
 		notification.condition = "test"
@@ -105,10 +105,9 @@ class TestNotification(unittest.TestCase):
 			"value_changed": "description1",
 			"message": "Description changed",
 			"recipients": [
-				{ "receiver_by_document_field": "owner" }
+				{ "email_by_document_field": "owner" }
 			]
 		}).insert()
-		frappe.db.commit()
 
 		event = frappe.new_doc("Event")
 		event.subject = "test-2",
@@ -136,7 +135,7 @@ class TestNotification(unittest.TestCase):
 			"reference_name": event.name, "status": "Not Sent"}))
 
 		frappe.set_user('Administrator')
-		frappe.get_doc('Scheduled Job Type', dict(method='frappe.email.doctype.notification.notification.trigger_daily_alerts')).execute()
+		frappe.utils.scheduler.trigger(frappe.local.site, "daily", now=True)
 
 		# not today, so no alert
 		self.assertFalse(frappe.db.get_value("Email Queue", {"reference_doctype": "Event",
@@ -150,7 +149,7 @@ class TestNotification(unittest.TestCase):
 		self.assertFalse(frappe.db.get_value("Email Queue", {"reference_doctype": "Event",
 			"reference_name": event.name, "status": "Not Sent"}))
 
-		frappe.get_doc('Scheduled Job Type', dict(method='frappe.email.doctype.notification.notification.trigger_daily_alerts')).execute()
+		frappe.utils.scheduler.trigger(frappe.local.site, "daily", now=True)
 
 		# today so show alert
 		self.assertTrue(frappe.db.get_value("Email Queue", {"reference_doctype": "Event",

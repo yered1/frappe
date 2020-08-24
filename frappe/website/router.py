@@ -2,17 +2,12 @@
 # MIT License. See license.txt
 
 from __future__ import unicode_literals
+import frappe, os
 
-import io
-import os
-import re
-
-import yaml
-
-import frappe
+from frappe.website.utils import can_cache, delete_page_cache, extract_title
 from frappe.model.document import get_controller
-from frappe.website.utils import can_cache, delete_page_cache, extract_comment_tag, extract_title
-
+from six import text_type
+import io
 
 def resolve_route(path):
 	"""Returns the page route object based on searching in pages and generators.
@@ -20,7 +15,6 @@ def resolve_route(path):
 
 	The only exceptions are `/about` and `/contact` these will be searched in Web Pages
 	first before checking the standard pages."""
-
 	if path not in ("about", "contact"):
 		context = get_page_info_from_template(path)
 		if context:
@@ -124,7 +118,7 @@ def get_page_info_from_doctypes(path=None):
 				if path:
 					return routes[r.route]
 		except Exception as e:
-			if not frappe.db.is_missing_column(e): raise e
+			if e.args[0]!=1054: raise e
 
 	return routes
 
@@ -223,33 +217,12 @@ def get_page_info(path, app, start, basepath=None, app_path=None, fname=None):
 	setup_source(page_info)
 
 	# extract properties from HTML comments
-	load_properties_from_source(page_info)
-
-	# extract properties from controller attributes
-	load_properties_from_controller(page_info)
+	load_properties(page_info)
 
 	# if not page_info.title:
 	# 	print('no-title-for', page_info.route)
 
 	return page_info
-
-def get_frontmatter(string):
-	"""
-	Reference: https://github.com/jonbeebe/frontmatter
-	"""
-
-	fmatter = ""
-	body = ""
-	result = re.compile(r'^\s*(?:---|\+\+\+)(.*?)(?:---|\+\+\+)\s*(.+)$', re.S | re.M).search(string)
-
-	if result:
-		fmatter = result.group(1)
-		body = result.group(2)
-
-	return {
-		"attributes": yaml.safe_load(fmatter),
-		"body": body,
-	}
 
 def setup_source(page_info):
 	'''Get the HTML source of the template'''
@@ -257,71 +230,42 @@ def setup_source(page_info):
 	source = jenv.loader.get_source(jenv, page_info.template)[0]
 	html = ''
 
-	if page_info.template.endswith(('.md', '.html')):
-		# extract frontmatter block if exists
-		try:
-			# values will be used to update page_info
-			res = get_frontmatter(source)
-			if res['attributes']:
-				page_info.update(res['attributes'])
-				source = res['body']
-		except Exception:
-			pass
+	if page_info.template.endswith('.md'):
+		source = frappe.utils.md_to_html(source)
 
-		if page_info.template.endswith('.md'):
-			source = frappe.utils.md_to_html(source)
-			page_info.page_toc_html = source.toc_html
+		if not page_info.show_sidebar:
+			source = '<div class="from-markdown">' + source + '</div>'
 
-			if not page_info.show_sidebar:
-				source = '<div class="from-markdown">' + source + '</div>'
+	# if only content
+	if page_info.template.endswith('.html') or page_info.template.endswith('.md'):
+		if ('</body>' not in source) and ('{% block' not in source):
+			page_info.only_content = True
+			html = '{% extends "templates/web.html" %}'
+			html += '\n{% block page_content %}\n' + source + '\n{% endblock %}'
+		else:
+			html = source
 
-	if not page_info.base_template:
-		page_info.base_template = get_base_template(page_info.route)
+		# load css/js files
+		js, css = '', ''
 
-	if 	page_info.template.endswith(('.html', '.md', )) and \
-		'{%- extends' not in source and '{% extends' not in source:
-		# set the source only if it contains raw content
-		html = source
+		js_path = os.path.join(page_info.basepath, (page_info.basename or 'index') + '.js')
+		if os.path.exists(js_path):
+			if not '{% block script %}' in html:
+				with io.open(js_path, 'r', encoding = 'utf-8') as f:
+					js = f.read()
+				html += '\n{% block script %}<script>' + js + '\n</script>\n{% endblock %}'
 
-	# load css/js files
-	js_path = os.path.join(page_info.basepath, (page_info.basename or 'index') + '.js')
-	if os.path.exists(js_path) and '{% block script %}' not in html:
-		with io.open(js_path, 'r', encoding = 'utf-8') as f:
-			js = f.read()
-			page_info.colocated_js = js
+		css_path = os.path.join(page_info.basepath, (page_info.basename or 'index') + '.css')
+		if os.path.exists(css_path):
+			if not '{% block style %}' in html:
+				with io.open(css_path, 'r', encoding='utf-8') as f:
+					css = f.read()
+				html += '\n{% block style %}\n<style>\n' + css + '\n</style>\n{% endblock %}'
 
-	css_path = os.path.join(page_info.basepath, (page_info.basename or 'index') + '.css')
-	if os.path.exists(css_path) and '{% block style %}' not in html:
-		with io.open(css_path, 'r', encoding='utf-8') as f:
-			css = f.read()
-			page_info.colocated_css = css
-
-	if html:
-		page_info.source = html
-		page_info.base_template =  page_info.base_template or 'templates/web.html'
-	else:
-		page_info.source = ''
+	page_info.source = html
 
 	# show table of contents
 	setup_index(page_info)
-
-def get_base_template(path=None):
-	'''
-	Returns the `base_template` for given `path`.
-	The default `base_template` for any web route is `templates/web.html` defined in `hooks.py`.
-	This can be overridden for certain routes in `custom_app/hooks.py` based on regex pattern.
-	'''
-	if not path:
-		path = frappe.local.request.path
-
-	base_template_map = frappe.get_hooks("base_template_map") or {}
-	patterns = list(base_template_map.keys())
-	patterns_desc = sorted(patterns, key=lambda x: len(x), reverse=True)
-	for pattern in patterns_desc:
-		if re.match(pattern, path):
-			templates = base_template_map[pattern]
-			base_template = templates[-1]
-			return base_template
 
 def setup_index(page_info):
 	'''Build page sequence from index.txt'''
@@ -331,23 +275,10 @@ def setup_index(page_info):
 		if os.path.exists(index_txt_path):
 			page_info.index = open(index_txt_path, 'r').read().splitlines()
 
-def load_properties_from_source(page_info):
-	'''Load properties like no_cache, title from source html'''
-
+def load_properties(page_info):
+	'''Load properties like no_cache, title from raw'''
 	if not page_info.title:
 		page_info.title = extract_title(page_info.source, page_info.route)
-
-	base_template = extract_comment_tag(page_info.source, 'base_template')
-	if base_template:
-		page_info.base_template = base_template
-
-	if (page_info.base_template
-		and "{%- extends" not in page_info.source
-		and "{% extends" not in page_info.source
-		and "</body>" not in page_info.source):
-		page_info.source = '''{{% extends "{0}" %}}
-			{{% block page_content %}}{1}{{% endblock %}}'''.format(page_info.base_template, page_info.source)
-		page_info.no_cache = 1
 
 	if "<!-- no-breadcrumbs -->" in page_info.source:
 		page_info.no_breadcrumbs = 1
@@ -368,21 +299,7 @@ def load_properties_from_source(page_info):
 		page_info.no_cache = 1
 
 	if "<!-- no-sitemap -->" in page_info.source:
-		page_info.sitemap = 0
-
-	if "<!-- sitemap -->" in page_info.source:
-		page_info.sitemap = 1
-
-def load_properties_from_controller(page_info):
-	if not page_info.controller: return
-
-	module = frappe.get_module(page_info.controller)
-	if not module: return
-
-	for prop in ("base_template_path", "template", "no_cache",
-		"sitemap", "condition_field"):
-		if hasattr(module, prop):
-			page_info[prop] = getattr(module, prop)
+		page_info.no_cache = 1
 
 def get_doctypes_with_web_view():
 	'''Return doctypes with Has Web View or set via hooks'''
@@ -394,6 +311,51 @@ def get_doctypes_with_web_view():
 		return doctypes
 
 	return frappe.cache().get_value('doctypes_with_web_view', _get)
+
+def sync_global_search():
+	'''Sync page content in global search'''
+	from frappe.website.render import render_page
+	from frappe.utils.global_search import sync_global_search
+	from bs4 import BeautifulSoup
+
+	if frappe.flags.update_global_search:
+		sync_global_search()
+	frappe.flags.update_global_search = []
+	frappe.session.user = 'Guest'
+	frappe.local.no_cache = True
+
+	frappe.db.sql('delete from __global_search where doctype="Static Web Page"')
+
+	for app in frappe.get_installed_apps(frappe_last=True):
+		app_path = frappe.get_app_path(app)
+
+		folders = get_start_folders()
+
+		for start in folders:
+			for basepath, folders, files in os.walk(os.path.join(app_path, start)):
+				for f in files:
+					if f.endswith('.html') or f.endswith('.md'):
+						path = os.path.join(basepath, f.rsplit('.', 1)[0])
+						try:
+							content = render_page(path)
+							soup = BeautifulSoup(content, 'html.parser')
+							text = ''
+							route = os.path.relpath(path, os.path.join(app_path, start))
+							for div in soup.findAll("div", {'class':'page-content'}):
+								text += div.text
+
+							frappe.flags.update_global_search.append(
+								dict(doctype='Static Web Page',
+									name=route,
+									content=text_type(text),
+									published=1,
+									title=text_type(soup.title.string),
+									route=route))
+
+						except Exception:
+							pass
+
+		sync_global_search()
 
 def get_start_folders():
 	return frappe.local.flags.web_pages_folders or ('www', 'templates/pages')

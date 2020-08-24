@@ -21,8 +21,6 @@ def resolve_redirect(path):
 		]
 	'''
 	redirects = frappe.get_hooks('website_redirects')
-	redirects += frappe.db.get_all('Website Route Redirect', ['source', 'target'])
-
 	if not redirects: return
 
 	redirect_to = frappe.cache().hget('website_redirects', path)

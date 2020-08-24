@@ -10,8 +10,6 @@ from frappe.utils.password import update_password
 def before_install():
 	frappe.reload_doc("core", "doctype", "docfield")
 	frappe.reload_doc("core", "doctype", "docperm")
-	frappe.reload_doc("core", "doctype", "doctype_action")
-	frappe.reload_doc("core", "doctype", "doctype_link")
 	frappe.reload_doc("core", "doctype", "doctype")
 
 def after_install():
@@ -45,8 +43,6 @@ def after_install():
 	with open(frappe.get_site_path('.test_log'), 'w') as f:
 		f.write('')
 
-	add_standard_navbar_items()
-
 	frappe.db.commit()
 
 def install_basic_docs():
@@ -54,13 +50,11 @@ def install_basic_docs():
 	install_docs = [
 		{'doctype':'User', 'name':'Administrator', 'first_name':'Administrator',
 			'email':'admin@example.com', 'enabled':1, "is_admin": 1,
-			'roles': [{'role': 'Administrator'}],
-			'thread_notify': 0, 'send_me_a_copy': 0
+			'roles': [{'role': 'Administrator'}]
 		},
 		{'doctype':'User', 'name':'Guest', 'first_name':'Guest',
 			'email':'guest@example.com', 'enabled':1, "is_guest": 1,
-			'roles': [{'role': 'Guest'}],
-			'thread_notify': 0, 'send_me_a_copy': 0
+			'roles': [{'role': 'Guest'}]
 		},
 		{'doctype': "Role", "role_name": "Report Manager"},
 		{'doctype': "Role", "role_name": "Translator"},
@@ -110,23 +104,20 @@ def before_tests():
 	frappe.clear_cache()
 
 	# complete setup if missing
+	from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
 	if not int(frappe.db.get_single_value('System Settings', 'setup_complete') or 0):
-		complete_setup_wizard()
+		setup_complete({
+			"language"			:"english",
+			"email"				:"test@erpnext.com",
+			"full_name"			:"Test User",
+			"password"			:"test",
+			"country"			:"United States",
+			"timezone"			:"America/New_York",
+			"currency"			:"USD"
+		})
 
 	frappe.db.commit()
 	frappe.clear_cache()
-
-def complete_setup_wizard():
-	from frappe.desk.page.setup_wizard.setup_wizard import setup_complete
-	setup_complete({
-		"language"			:"English",
-		"email"				:"test@erpnext.com",
-		"full_name"			:"Test User",
-		"password"			:"test",
-		"country"			:"United States",
-		"timezone"			:"America/New_York",
-		"currency"			:"USD"
-	})
 
 def import_country_and_currency():
 	from frappe.geo.country_info import get_all
@@ -152,7 +143,6 @@ def add_country_and_currency(name, country):
 			"country_name": name,
 			"code": country.code,
 			"date_format": country.date_format or "dd-mm-yyyy",
-			"time_format": country.time_format or "HH:mm:ss",
 			"time_zones": "\n".join(country.timezones or []),
 			"docstatus": 0
 		}).db_insert()
@@ -168,88 +158,3 @@ def add_country_and_currency(name, country):
 			"number_format": country.number_format,
 			"docstatus": 0
 		}).db_insert()
-
-def add_standard_navbar_items():
-	navbar_settings = frappe.get_single("Navbar Settings")
-
-	standard_navbar_items = [
-		{
-			'item_label': 'My Profile',
-			'item_type': 'Route',
-			'route': '#user-profile',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'My Settings',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.route_to_user()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Session Defaults',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.setup_session_defaults()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Reload',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.clear_cache()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'View Website',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.view_website()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Toggle Full Width',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.toggle_full_width()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Background Jobs',
-			'item_type': 'Route',
-			'route': '#background_jobs',
-			'is_standard': 1
-		},
-		{
-			'item_type': 'Separator',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Logout',
-			'item_type': 'Action',
-			'action': 'frappe.app.logout()',
-			'is_standard': 1
-		}
-	]
-
-	standard_help_items = [
-		{
-			'item_type': 'Separator',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'About',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.show_about()',
-			'is_standard': 1
-		},
-		{
-			'item_label': 'Keyboard Shortcuts',
-			'item_type': 'Action',
-			'action': 'frappe.ui.toolbar.show_shortcuts(event)',
-			'is_standard': 1
-		}
-	]
-
-	for item in standard_navbar_items:
-		navbar_settings.append('settings_dropdown', item)
-
-	for item in standard_help_items:
-		navbar_settings.append('help_dropdown', item)
-
-	navbar_settings.save()

@@ -2,7 +2,7 @@
 
 from __future__ import unicode_literals
 import frappe
-from frappe.desk.page.setup_wizard.install_fixtures import update_genders, update_salutations
+from frappe.desk.page.setup_wizard.install_fixtures import update_genders_and_salutations
 
 def execute():
 	frappe.db.set_value("DocType", "Contact", "module", "Contacts")
@@ -11,5 +11,4 @@ def execute():
 	frappe.reload_doc('contacts', 'doctype', 'gender')
 	frappe.reload_doc('contacts', 'doctype', 'salutation')
 
-	update_genders()
-	update_salutations()
+	update_genders_and_salutations()

@@ -85,83 +85,47 @@ frappe.ui.click_toggle_like = function() {
 	return false;
 }
 
-frappe.ui.setup_like_popover = ($parent, selector, check_not_liked=true) => {
+frappe.ui.setup_like_popover = function($parent, selector) {
 	if (frappe.dom.is_touchscreen()) {
 		return;
 	}
 
-	$parent.on('mouseover', selector, function() {
-		const target_element = $(this);
-		target_element.popover({
+	$parent.on("mouseover", selector, function() {
+		var $wrapper = $(this);
+
+		$wrapper.popover({
 			animation: true,
-			placement: 'right',
-			trigger: 'manual',
-			template:`<div class="liked-by-popover popover">
-				<div class="arrow"></div>
-				<div class="popover-content"></div>
-			</div>`,
-			content: () => {
-				let liked_by = target_element.attr('data-liked-by');
+			placement: "right",
+			content: function() {
+				var liked_by = $wrapper.attr('data-liked-by');
 				liked_by = liked_by ? decodeURI(liked_by) : '[]';
 				liked_by = JSON.parse(liked_by);
 
-				const user = frappe.session.user;
+				var user = frappe.session.user;
 				// hack
-				if (check_not_liked) {
-					if (target_element.find(".not-liked").length) {
-						if (liked_by.indexOf(user)!==-1) {
-							liked_by.splice(liked_by.indexOf(user), 1);
-						}
-					} else {
-						if (liked_by.indexOf(user)===-1) {
-							liked_by.push(user);
-						}
+				if ($wrapper.find(".not-liked").length) {
+					if (liked_by.indexOf(user)!==-1) {
+						liked_by.splice(liked_by.indexOf(user), 1);
+					}
+				} else {
+					if (liked_by.indexOf(user)===-1) {
+						liked_by.push(user);
 					}
 				}
 
 				if (!liked_by.length) {
 					return "";
 				}
-
-				let liked_by_list = $(`<ul class="list-unstyled"></ul>`);
-
-				// to show social profile of the user
-				let link_base = '#social/profile/';
-
-				liked_by.forEach(user => {
-					// append user list item
-					liked_by_list.append(`
-						<li data-user=${user}>${frappe.avatar(user)}
-							<span>${frappe.user.full_name(user)}</span>
-						</li>
-					`);
-				});
-
-				liked_by_list.children('li').click(ev => {
-					let user = ev.currentTarget.dataset.user;
-					target_element.popover('hide');
-					frappe.set_route(link_base + user);
-				});
-
-				return liked_by_list;
+				return frappe.render_template("liked_by", {"liked_by": liked_by});
 			},
 			html: true,
 			container: 'body'
 		});
 
-		target_element.popover('show');
-
-		$(".popover").on("mouseleave", () => {
-			target_element.popover('hide');
-		});
-
-		target_element.on('mouseout', () => {
-			setTimeout(() => {
-				if (!$('.popover:hover').length) {
-					target_element.popover('hide');
-				}
-			}, 100);
-		});
+		$wrapper.popover('show');
 	});
 
-};
+	$parent.on("mouseout", selector, function() {
+		$(this).popover('destroy');
+	});
+}

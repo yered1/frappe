@@ -16,22 +16,12 @@ frappe.ui.form.get_event_handler_list = function(doctype, fieldname) {
 frappe.ui.form.on = frappe.ui.form.on_change = function(doctype, fieldname, handler) {
 	var add_handler = function(fieldname, handler) {
 		var handler_list = frappe.ui.form.get_event_handler_list(doctype, fieldname);
-
-		let _handler = (...args) => {
-			try {
-				return handler(...args);
-			} catch (error) {
-				console.error(handler);
-				throw error;
-			}
-		}
-
-		handler_list.push(_handler);
+		handler_list.push(handler);
 
 		// add last handler to events so it can be called as
 		// frm.events.handler(frm)
 		if(cur_frm && cur_frm.doctype===doctype) {
-			cur_frm.events[fieldname] = _handler;
+			cur_frm.events[fieldname] = handler;
 		}
 	}
 
@@ -179,7 +169,7 @@ frappe.ui.form.ScriptManager = Class.extend({
 
 		function setup_add_fetch(df) {
 			if((['Data', 'Read Only', 'Text', 'Small Text', 'Currency',
-				'Text Editor', 'Code', 'Link', 'Float', 'Int', 'Date', 'Select'].includes(df.fieldtype) || df.read_only==1)
+				'Text Editor', 'Code', 'Link', 'Float', 'Int', 'Date'].includes(df.fieldtype) || df.read_only==1)
 				&& df.fetch_from && df.fetch_from.indexOf(".")!=-1) {
 				var parts = df.fetch_from.split(".");
 				me.frm.add_fetch(parts[0], parts[1], df.fieldname);
@@ -189,7 +179,7 @@ frappe.ui.form.ScriptManager = Class.extend({
 		// setup add fetch
 		$.each(this.frm.fields, function(i, field) {
 			setup_add_fetch(field.df);
-			if(frappe.model.table_fields.includes(field.df.fieldtype)) {
+			if(field.df.fieldtype==="Table") {
 				$.each(frappe.meta.get_docfields(field.df.options, me.frm.docname), function(i, df) {
 					setup_add_fetch(df);
 				});

@@ -33,15 +33,9 @@
 		{% for row in data %}
 		<tr>
 			{% for col in columns %}
-				{% if row[col.fieldname] == 'Total' %}
-					<td {{- get_alignment(col) }}>
-						{{- row[col.fieldname] -}}
-					</td>
-				{% else %}
-					<td {{- get_alignment(col) }}>
-						{{- frappe.format(row[col.fieldname], col, row) -}}
-					</td>
-				{% endif %}
+			<td {{- get_alignment(col) }}>
+				{{- frappe.format(row[col.fieldname], col, row) -}}
+			</td>
 			{% endfor %}
 		</td>
 		{% endfor %}
@@ -54,7 +48,7 @@
 	<tr>
 		<td>
 			<p>
-				{{ _("This report was generated on {0}").format(date_time) }}
+				{{ _("This report was generated on {0}".format(date_time)) }}
 			</p>
 			<p>
 				{{ _("View report in your browser") }}:

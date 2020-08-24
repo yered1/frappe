@@ -39,10 +39,9 @@ class TestActivityLog(unittest.TestCase):
 		frappe.local.form_dict = frappe._dict()
 
 	def get_auth_log(self, operation='Login'):
-		names = frappe.db.get_all('Activity Log', filters={
-			'user': 'Administrator',
-			'operation': operation,
-		}, order_by='`creation` DESC')
+		names = frappe.db.sql_list("""select name from `tabActivity Log`
+					where user='Administrator' and operation='{operation}' order by
+					creation desc""".format(operation=operation))
 
 		name = names[0]
 		auth_log = frappe.get_doc('Activity Log', name)

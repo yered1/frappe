@@ -17,11 +17,10 @@ class TestPassword(unittest.TestCase):
 		doc.password = new_password
 		doc.save()
 
-		self.assertEqual(doc.password, '*' * len(new_password))
+		self.assertEqual(doc.password, '*'*len(new_password))
 
-		password_list = get_password_list(doc)
-
-		auth_password = password_list[0].get('password', '')
+		auth_password = frappe.db.sql('''select `password` from `__Auth`
+			where doctype=%(doctype)s and name=%(name)s and fieldname="password"''', doc.as_dict())[0][0]
 
 		# encrypted
 		self.assertTrue(auth_password != new_password)
@@ -53,7 +52,8 @@ class TestPassword(unittest.TestCase):
 
 		update_password(user, new_password)
 
-		auth = get_password_list(dict(doctype='User', name=user))[0]
+		auth = frappe.db.sql('''select `password` from `__Auth`
+			where doctype='User' and name=%s and fieldname="password"''', user, as_dict=True)[0]
 
 		# is not plain text
 		self.assertTrue(auth.password != new_password)
@@ -83,21 +83,17 @@ class TestPassword(unittest.TestCase):
 
 		new_doc = frappe.get_doc(doc.doctype, new_name)
 		self.assertEqual(new_doc.get_password(), password)
-		self.assertTrue(not get_password_list(doc))
+		self.assertTrue(not frappe.db.sql('''select `password` from `__Auth`
+			where doctype=%s and name=%s and fieldname="password"''', (doc.doctype, doc.name)))
 
 		frappe.rename_doc(doc.doctype, new_name, old_name)
-		self.assertTrue(get_password_list(doc))
+		self.assertTrue(frappe.db.sql('''select `password` from `__Auth`
+			where doctype=%s and name=%s and fieldname="password"''', (doc.doctype, doc.name)))
 
 	def test_password_on_delete(self):
 		doc = self.make_email_account()
 		doc.delete()
 
-		self.assertTrue(not get_password_list(doc))
+		self.assertTrue(not frappe.db.sql('''select `password` from `__Auth`
+			where doctype=%s and name=%s and fieldname="password"''', (doc.doctype, doc.name)))
 
-
-def get_password_list(doc):
-	return frappe.db.sql("""SELECT `password`
-			FROM `__Auth`
-			WHERE `doctype`=%s
-			AND `name`=%s
-			AND `fieldname`='password' LIMIT 1""", (doc.get('doctype'), doc.get('name')), as_dict=1)

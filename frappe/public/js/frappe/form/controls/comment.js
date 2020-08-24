@@ -1,7 +1,7 @@
 import Quill from 'quill';
 import Mention from './quill-mention/quill.mention';
 
-Quill.register('modules/mention', Mention, true);
+Quill.register('modules/mention', Mention);
 
 frappe.ui.form.ControlComment = frappe.ui.form.ControlTextEditor.extend({
 	make_wrapper() {
@@ -60,7 +60,7 @@ frappe.ui.form.ControlComment = frappe.ui.form.ControlTextEditor.extend({
 
 	update_state() {
 		const value = this.get_value();
-		if (strip_html(value).trim() != "") {
+		if (strip_html(value)) {
 			this.button.removeClass('btn-default').addClass('btn-primary');
 		} else {
 			this.button.addClass('btn-default').removeClass('btn-primary');
@@ -82,7 +82,12 @@ frappe.ui.form.ControlComment = frappe.ui.form.ControlTextEditor.extend({
 			return null;
 		}
 
-		const at_values = this.mentions.slice();
+		const at_values = this.mentions.map((value, i) => {
+			return {
+				id: i,
+				value
+			};
+		});
 
 		return {
 			allowedChars: /^[A-Za-z0-9_]*$/,

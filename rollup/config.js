@@ -8,10 +8,9 @@ const commonjs = require('rollup-plugin-commonjs');
 const node_resolve = require('rollup-plugin-node-resolve');
 const postcss = require('rollup-plugin-postcss');
 const buble = require('rollup-plugin-buble');
-const { terser } = require('rollup-plugin-terser');
+const uglify = require('rollup-plugin-uglify');
 const vue = require('rollup-plugin-vue');
 const frappe_html = require('./frappe-html-plugin');
-const less_loader = require('./less-loader');
 
 const production = process.env.FRAPPE_ENV === 'production';
 
@@ -21,8 +20,7 @@ const {
 	bench_path,
 	get_public_path,
 	get_app_path,
-	get_build_json,
-	get_options_for_scss
+	get_build_json
 } = require('./rollup.utils');
 
 function get_rollup_options(output_file, input_files) {
@@ -66,7 +64,7 @@ function get_rollup_options_for_js(output_file, input_files) {
 				paths: node_resolve_paths
 			}
 		}),
-		production && terser()
+		production && uglify()
 	];
 
 	return {
@@ -109,37 +107,26 @@ function get_rollup_options_for_js(output_file, input_files) {
 
 function get_rollup_options_for_css(output_file, input_files) {
 	const output_path = path.resolve(assets_path, output_file);
-	const starts_with_css = output_file.startsWith('css/');
+	const minimize_css = output_path.startsWith('css/') && production;
 
 	const plugins = [
 		// enables array of inputs
 		multi_entry(),
 		// less -> css
 		postcss({
-			plugins: [
-				starts_with_css && production ? require('cssnano')({ preset: 'default' }) : null
-			].filter(Boolean),
 			extract: output_path,
-			loaders: [less_loader],
-			use: [
-				['less', {
-					// import other less/css files starting from these folders
-					paths: [
-						path.resolve(get_public_path('frappe'), 'less')
-					]
-				}],
-				['sass', {
-					...get_options_for_scss(),
-					outFile: output_path,
-					sourceMapContents: true
-				}]
-			],
+			use: [['less', {
+				// import other less/css files starting from these folders
+				paths: [
+					path.resolve(get_public_path('frappe'), 'less')
+				]
+			}], 'sass'],
 			include: [
 				path.resolve(bench_path, '**/*.less'),
 				path.resolve(bench_path, '**/*.scss'),
 				path.resolve(bench_path, '**/*.css')
 			],
-			sourceMap: starts_with_css && !production
+			minimize: minimize_css
 		})
 	];
 
@@ -153,7 +140,6 @@ function get_rollup_options_for_css(output_file, input_files) {
 
 				// console.warn everything else
 				log(chalk.yellow.underline(warning.code), ':', warning.message);
-				log(warning);
 			}
 		},
 		outputOptions: {

@@ -61,20 +61,19 @@ def has_permission(doctype, ptype="read", doc=None, verbose=False, user=None, ra
 		if isinstance(doc, string_types):
 			doc = frappe.get_doc(meta.name, doc)
 		perm = get_doc_permissions(doc, user=user, ptype=ptype).get(ptype)
-		if not perm: push_perm_check_log(_('User {0} does not have access to this document').format(frappe.bold(user)))
+		if not perm: push_perm_check_log('User do not have document access')
 	else:
 		if ptype=="submit" and not cint(meta.is_submittable):
-			push_perm_check_log(_("Document Type is not submittable"))
+			push_perm_check_log("Doctype is not submittable")
 			return False
 
 		if ptype=="import" and not cint(meta.allow_import):
-			push_perm_check_log(_("Document Type is not importable"))
+			push_perm_check_log("Doctype is not importable")
 			return False
 
 		role_permissions = get_role_permissions(meta, user=user)
 		perm = role_permissions.get(ptype)
-		if not perm:
-			push_perm_check_log(_('User {0} does not have doctype access via role permission for document {1}').format(frappe.bold(user), frappe.bold(doctype)))
+		if not perm: push_perm_check_log('User do not have doctype access via role permission')
 
 	def false_if_not_shared():
 		if ptype in ("read", "write", "share", "email", "print"):
@@ -307,7 +306,7 @@ def has_controller_permissions(doc, ptype, user=None):
 	return None
 
 def get_doctypes_with_read():
-	return list(set([p.parent if type(p.parent) == str else p.parent.encode('UTF8') for p in get_valid_perms()]))
+	return list(set([p.parent for p in get_valid_perms()]))
 
 def get_valid_perms(doctype=None, user=None):
 	'''Get valid permissions for the current user from DocPerm and Custom DocPerm'''
@@ -397,7 +396,7 @@ def set_user_permission_if_allowed(doctype, name, user, with_message=False):
 	if get_role_permissions(frappe.get_meta(doctype), user).set_user_permissions!=1:
 		add_user_permission(doctype, name, user)
 
-def add_user_permission(doctype, name, user, ignore_permissions=False, applicable_for=None, is_default=0):
+def add_user_permission(doctype, name, user, ignore_permissions=False, applicable_for=None):
 	'''Add user permission'''
 	from frappe.core.doctype.user_permission.user_permission import user_permission_exists
 
@@ -410,7 +409,6 @@ def add_user_permission(doctype, name, user, ignore_permissions=False, applicabl
 			user=user,
 			allow=doctype,
 			for_value=name,
-			is_default=is_default,
 			applicable_for=applicable_for,
 		)).insert(ignore_permissions=ignore_permissions)
 
@@ -420,10 +418,8 @@ def remove_user_permission(doctype, name, user):
 	frappe.delete_doc('User Permission', user_permission_name)
 
 def clear_user_permissions_for_doctype(doctype, user=None):
-	filters = {'allow': doctype}
-	if user:
-		filters['user'] = user
-	user_permissions_for_doctype = frappe.db.get_all('User Permission', filters=filters)
+	user_permissions_for_doctype = frappe.db.get_list('User Permission',
+		dict(user=user, allow=doctype))
 	for d in user_permissions_for_doctype:
 		frappe.delete_doc('User Permission', d.name)
 
@@ -436,15 +432,12 @@ def can_import(doctype, raise_exception=False):
 	return True
 
 def can_export(doctype, raise_exception=False):
-	if "System Manager" in frappe.get_roles():
-		return True
-	else:
-		role_permissions = frappe.permissions.get_role_permissions(doctype)
-		has_access = role_permissions.get('export') or \
-			role_permissions.get('if_owner').get('export')
-		if not has_access and raise_exception:
-			raise frappe.PermissionError(_("You are not allowed to export {} doctype").format(doctype))
-		return has_access
+	if not ("System Manager" in frappe.get_roles() or has_permission(doctype, "export")):
+		if raise_exception:
+			raise frappe.PermissionError("You are not allowed to export: {doctype}".format(doctype=doctype))
+		else:
+			return False
+	return True
 
 def update_permission_property(doctype, role, permlevel, ptype, value=None, validate=True):
 	'''Update a property in Custom Perm'''
@@ -529,22 +522,9 @@ def allow_everything():
 	return perm
 
 def get_allowed_docs_for_doctype(user_permissions, doctype):
-	''' Returns all the docs from the passed user_permissions that are
-		allowed under provided doctype '''
-	return filter_allowed_docs_for_doctype(user_permissions, doctype, with_default_doc=False)
-
-def filter_allowed_docs_for_doctype(user_permissions, doctype, with_default_doc=True):
-	''' Returns all the docs from the passed user_permissions that are
-		allowed under provided doctype along with default doc value if with_default_doc is set '''
-	allowed_doc = []
-	default_doc = None
-	for doc in user_permissions:
-		if not doc.get('applicable_for') or doc.get('applicable_for') == doctype:
-			allowed_doc.append(doc.get('doc'))
-			if doc.get('is_default') or len(user_permissions) == 1 and with_default_doc:
-				default_doc = doc.get('doc')
-
-	return (allowed_doc, default_doc) if with_default_doc else allowed_doc
+	'''Returns all the docs from the passed user_permission
+		that are allowed under provide doctype'''
+	return [d.get('doc') for d in user_permissions if not d.get('applicable_for') or d.get('applicable_for') == doctype]
 
 def push_perm_check_log(log):
 	if frappe.flags.get('has_permission_check_logs') == None: return

@@ -7,7 +7,9 @@ from frappe.model.document import Document
 
 class CustomScript(Document):
 	def autoname(self):
-		self.name = self.dt + "-Client"
+		if not self.script_type:
+			self.script_type = 'Client'
+		self.name = self.dt + "-" + self.script_type
 
 	def on_update(self):
 		frappe.clear_cache(doctype=self.dt)

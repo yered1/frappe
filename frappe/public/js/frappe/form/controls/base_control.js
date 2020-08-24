@@ -1,3 +1,13 @@
+frappe.ui.form.make_control = function (opts) {
+	var control_class_name = "Control" + opts.df.fieldtype.replace(/ /g, "");
+	if(frappe.ui.form[control_class_name]) {
+		return new frappe.ui.form[control_class_name](opts);
+	} else {
+		// eslint-disable-next-line
+		console.log("Invalid Control Name: " + opts.df.fieldtype);
+	}
+};
+
 frappe.ui.form.Control = Class.extend({
 	init: function(opts) {
 		$.extend(this, opts);
@@ -40,7 +50,7 @@ frappe.ui.form.Control = Class.extend({
 			return this.df.get_status(this);
 		}
 
-		if((!this.doctype && !this.docname) || this.df.parenttype === 'Web Form') {
+		if(!this.doctype && !this.docname) {
 			// like in case of a dialog box
 			if (cint(this.df.hidden)) {
 				// eslint-disable-next-line
@@ -68,7 +78,7 @@ frappe.ui.form.Control = Class.extend({
 		// hide if no value
 		if (this.doctype && status==="Read" && !this.only_input
 			&& is_null(frappe.model.get_value(this.doctype, this.docname, this.df.fieldname))
-			&& !in_list(["HTML", "Image", "Button"], this.df.fieldtype)) {
+			&& !in_list(["HTML", "Image"], this.df.fieldtype)) {
 
 			// eslint-disable-next-line
 			if(explain) console.log("By Hide Read-only, null fields: None");
@@ -114,7 +124,7 @@ frappe.ui.form.Control = Class.extend({
 				if (!this.doc.__islocal) {
 					new frappe.views.TranslationManager({
 						'df': this.df,
-						'source_text': value,
+						'source_name': value,
 						'target_language': this.doc.language,
 						'doc': this.doc
 					});
@@ -155,11 +165,8 @@ frappe.ui.form.Control = Class.extend({
 
 					if(me.df.change || me.df.onchange) {
 						// onchange event specified in df
-						let set = (me.df.change || me.df.onchange).apply(me, [e]);
-						me.set_invalid && me.set_invalid();
-						return set;
+						return (me.df.change || me.df.onchange).apply(me, [e]);
 					}
-					me.set_invalid && me.set_invalid();
 				}
 			]);
 		};
@@ -183,7 +190,7 @@ frappe.ui.form.Control = Class.extend({
 		}
 	},
 	set_model_value: function(value) {
-		if(this.frm) {
+		if(this.doctype && this.docname) {
 			this.last_value = value;
 			return frappe.model.set_value(this.doctype, this.docname, this.df.fieldname,
 				value, this.df.fieldtype);

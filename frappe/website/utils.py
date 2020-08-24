@@ -3,14 +3,9 @@
 
 from __future__ import unicode_literals
 import functools
-import re
-import os
-import frappe
-
+import frappe, re, os
 from six import iteritems
 from past.builtins import cmp
-from frappe.utils import md_to_html
-
 
 def delete_page_cache(path):
 	cache = frappe.cache()
@@ -24,7 +19,7 @@ def delete_page_cache(path):
 			cache.delete_key(name)
 
 def find_first_image(html):
-	m = re.finditer(r"""<img[^>]*src\s?=\s?['"]([^'"]*)['"]""", html)
+	m = re.finditer("""<img[^>]*src\s?=\s?['"]([^'"]*)['"]""", html)
 	try:
 		return next(m).groups()[0]
 	except StopIteration:
@@ -37,58 +32,42 @@ def can_cache(no_cache=False):
 		return False
 	return not no_cache
 
-
 def get_comment_list(doctype, name):
-	comments = frappe.get_all('Comment',
-		fields=['name', 'creation', 'owner',
-				'comment_email', 'comment_by', 'content'],
-		filters=dict(
-			reference_doctype=doctype,
-			reference_name=name,
-			comment_type='Comment',
-		),
-		or_filters=[
-			['owner', '=', frappe.session.user],
-			['published', '=', 1]])
-
-	communications = frappe.get_all("Communication",
-		fields=['name', 'creation', 'owner', 'owner as comment_email',
-				'sender_full_name as comment_by', 'content', 'recipients'],
-		filters=dict(
-			reference_doctype=doctype,
-			reference_name=name,
-		),
-		or_filters=[
-			['recipients', 'like', '%{0}%'.format(frappe.session.user)],
-			['cc', 'like', '%{0}%'.format(frappe.session.user)],
-			['bcc', 'like', '%{0}%'.format(frappe.session.user)]])
-
-	return sorted((comments + communications), key=lambda comment: comment['creation'], reverse=True)
-
+	return frappe.db.sql("""select
+		content, sender_full_name, creation, sender
+		from `tabCommunication`
+		where
+			communication_type='Comment'
+			and reference_doctype=%s
+			and reference_name=%s
+			and (comment_type is null or comment_type in ('Comment', 'Communication'))
+			and modified >= DATE_SUB(NOW(),INTERVAL 1 YEAR)
+		order by creation""", (doctype, name), as_dict=1) or []
 
 def get_home_page():
-	if frappe.local.flags.home_page and not frappe.flags.in_test:
+	if frappe.local.flags.home_page:
 		return frappe.local.flags.home_page
 
 	def _get_home_page():
 		home_page = None
 
-		# for user
-		if frappe.session.user != 'Guest':
-			# by role
-			for role in frappe.get_roles():
-				home_page = frappe.db.get_value('Role', role, 'home_page')
-				if home_page: break
+		get_website_user_home_page = frappe.get_hooks('get_website_user_home_page')
+		if get_website_user_home_page:
+			home_page = frappe.get_attr(get_website_user_home_page[-1])(frappe.session.user)
 
-			# portal default
-			if not home_page:
-				home_page = frappe.db.get_value("Portal Settings", None, "default_portal_home")
-
-		# by hooks
 		if not home_page:
-			home_page = get_home_page_via_hooks()
+			role_home_page = frappe.get_hooks("role_home_page")
+			if role_home_page:
+				for role in frappe.get_roles():
+					if role in role_home_page:
+						home_page = role_home_page[role][-1]
+						break
 
-		# global
+		if not home_page:
+			home_page = frappe.get_hooks("home_page")
+			if home_page:
+				home_page = home_page[-1]
+
 		if not home_page:
 			home_page = frappe.db.get_value("Website Settings", None, "home_page") or "login"
 
@@ -97,31 +76,6 @@ def get_home_page():
 		return home_page
 
 	return frappe.cache().hget("home_page", frappe.session.user, _get_home_page)
-
-def get_home_page_via_hooks():
-	home_page = None
-
-	home_page_method = frappe.get_hooks('get_website_user_home_page')
-	if home_page_method:
-		home_page = frappe.get_attr(home_page_method[-1])(frappe.session.user).strip('/')
-	elif frappe.get_hooks('website_user_home_page'):
-		home_page = frappe.get_hooks('website_user_home_page')[-1].strip('/')
-
-	if not home_page:
-		role_home_page = frappe.get_hooks("role_home_page")
-		if role_home_page:
-			for role in frappe.get_roles():
-				if role in role_home_page:
-					home_page = role_home_page[role][-1]
-					break
-
-	if not home_page:
-		home_page = frappe.get_hooks("home_page")
-		if home_page:
-			home_page = home_page[-1]
-
-	return home_page
-
 
 def is_signup_enabled():
 	if getattr(frappe.local, "is_signup_enabled", None) is None:
@@ -135,10 +89,10 @@ def is_signup_enabled():
 def cleanup_page_name(title):
 	"""make page name from title"""
 	if not title:
-		return ''
+		return title
 
 	name = title.lower()
-	name = re.sub(r'[~!@#$%^&*+()<>,."\'\?]', '', name)
+	name = re.sub('[~!@#$%^&*+()<>,."\'\?]', '', name)
 	name = re.sub('[:/]', '-', name)
 
 	name = '-'.join(name.split())
@@ -240,6 +194,7 @@ def abs_url(path):
 
 def get_toc(route, url_prefix=None, app=None):
 	'''Insert full index (table of contents) for {index} tag'''
+	from frappe.website.utils import get_full_index
 
 	full_index = get_full_index(app=app)
 
@@ -255,7 +210,7 @@ def get_next_link(route, url_prefix=None, app=None):
 	route = route.rstrip('/')
 	children_map = get_full_index(app=app)
 	parent_route = os.path.dirname(route)
-	children = children_map.get(parent_route, None)
+	children = children_map[parent_route]
 
 	if parent_route and children:
 		for i, c in enumerate(children):
@@ -327,33 +282,17 @@ def get_full_index(route=None, app=None):
 
 def extract_title(source, path):
 	'''Returns title from `&lt;!-- title --&gt;` or &lt;h1&gt; or path'''
-	title = extract_comment_tag(source, 'title')
+	title = ''
 
-	if not title and "<h1>" in source:
-		# extract title from h1
+	if "<!-- title:" in source:
+		title = re.findall('<!-- title:([^>]*) -->', source)[0].strip()
+	elif "<h1>" in source:
 		match = re.findall('<h1>([^<]*)', source)
-		title_content = match[0].strip()[:300]
-		if '{{' not in title_content:
-			title = title_content
-
+		title = match[0].strip()[:300]
 	if not title:
-		# make title from name
 		title = os.path.basename(path.rsplit('.', )[0].rstrip('/')).replace('_', ' ').replace('-', ' ').title()
 
 	return title
-
-def extract_comment_tag(source, tag):
-	'''Extract custom tags in comments from source.
-
-	:param source: raw template source in HTML
-	:param title: tag to search, example "title"
-	'''
-
-	if "<!-- {0}:".format(tag) in source:
-		return re.findall('<!-- {0}:([^>]*) -->'.format(tag), source)[0].strip()
-	else:
-		return None
-
 
 def add_missing_headers():
 	'''Walk and add missing headers in docs (to be called from bench execute)'''
@@ -374,18 +313,3 @@ def add_missing_headers():
 						content = '# {0}\n\n'.format(h) + content
 						f.write(content.encode('utf-8'))
 
-def get_html_content_based_on_type(doc, fieldname, content_type):
-		'''
-		Set content based on content_type
-		'''
-		content = doc.get(fieldname)
-
-		if content_type == 'Markdown':
-			content = md_to_html(doc.get(fieldname + '_md'))
-		elif content_type == 'HTML':
-			content = doc.get(fieldname + '_html')
-
-		if content == None:
-			content = ''
-
-		return content

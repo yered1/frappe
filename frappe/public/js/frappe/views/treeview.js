@@ -14,7 +14,7 @@ frappe.views.TreeFactory = class TreeFactory extends frappe.views.Factory {
 			};
 
 			if (!frappe.treeview_settings[route[1]] && !frappe.meta.get_docfield(route[1], "is_group")) {
-				frappe.msgprint(__("Tree view is not available for {0}", [route[1]] ));
+				frappe.msgprint(__("Tree view not available for {0}", [route[1]] ));
 				return false;
 			}
 			$.extend(options, frappe.treeview_settings[route[1]] || {});
@@ -62,7 +62,7 @@ frappe.views.TreeView = Class.extend({
 
 		this.page = this.parent.page;
 		frappe.container.change_to(this.page_name);
-		frappe.breadcrumbs.add(me.opts.breadcrumb || locals.DocType[me.doctype].module, me.doctype);
+		frappe.breadcrumbs.add(me.opts.breadcrumb || locals.DocType[me.doctype].module);
 
 		this.set_title();
 
@@ -335,15 +335,6 @@ frappe.views.TreeView = Class.extend({
 		frappe.ui.get_print_settings(false, function(print_settings) {
 			var title =  __(me.docname || me.doctype);
 			frappe.render_tree({title: title, tree: tree, print_settings:print_settings});
-			frappe.call({
-				method: "frappe.core.doctype.access_log.access_log.make_access_log",
-				args: {
-					doctype: me.doctype,
-					report_name: me.page_name,
-					page: tree,
-					method: 'Print'
-				}
-			});
 		});
 	},
 	set_primary_action: function(){
@@ -392,6 +383,14 @@ frappe.views.TreeView = Class.extend({
 			if (has_perm) {
 				me.page.add_menu_item(menu_item["label"], menu_item["action"]);
 			}
+		});
+
+		// last menu item
+		me.page.add_menu_item(__('Add to Desktop'), () => {
+			const label = me.doctype === 'Account' ?
+				__('Chart of Accounts') :
+				__(me.doctype);
+			frappe.add_to_desktop(label, me.doctype);
 		});
 	}
 });

@@ -29,24 +29,27 @@ frappe.ui.form.States = Class.extend({
 			});
 
 			frappe.workflow.get_transitions(me.frm.doc).then((transitions) => {
-				const next_actions = $.map(transitions, d => `${d.action.bold()} ${__("by Role")} ${d.allowed}`)
-					.join(", ") || __("None: End of Workflow").bold();
+				var next_html = $.map(transitions,
+					function(d) {
+						return d.action.bold() + __(" by Role ") + d.allowed;
+					}).join(", ") || __("None: End of Workflow").bold();
 
-				const document_editable_by = frappe.workflow.get_document_state(me.frm.doctype, state).allow_edit.bold();
-
-				$(d.body).html(`
-					<p>${__("Current status")}: ${state.bold()}</p>
-					<p>${__("Document is only editable by users with role")}: ${document_editable_by}</p>
-					<p>${__("Next actions")}: ${next_actions}</p>
-					<p>${__("{0}: Other permission rules may also apply", [__('Note').bold()])}</p>
-				`).css({padding: '15px'});
-
+				$(d.body).html("<p>"+__("Current status")+": " + state.bold() + "</p>"
+					+ "<p>"+__("Document is only editable by users of role")+": "
+						+ frappe.workflow.get_document_state(me.frm.doctype,
+							state).allow_edit.bold() + "</p>"
+					+ "<p>"+__("Next actions")+": "+ next_html +"</p>"
+					+ (me.frm.doc.__islocal ? ("<div class='alert alert-info'>"
+						+__("Workflow will start after saving.")+"</div>") : "")
+					+ "<p class='help'>"+__("Note: Other permission rules may also apply")+"</p>"
+				).css({padding: '15px'});
 				d.show();
 			});
 		}, true);
 	},
 
 	refresh: function() {
+		const me = this;
 		// hide if its not yet saved
 		if(this.frm.doc.__islocal) {
 			this.set_default_state();
@@ -55,6 +58,8 @@ frappe.ui.form.States = Class.extend({
 
 		// state text
 		const state = this.get_state();
+
+		let doctype = this.frm.doctype;
 
 		if(state) {
 			// show actions from that state
@@ -65,6 +70,8 @@ frappe.ui.form.States = Class.extend({
 	show_actions: function() {
 		var added = false;
 		var me = this;
+
+		this.frm.page.clear_actions_menu();
 
 		// if the loaded doc is dirty, don't show workflow buttons
 		if (this.frm.doc.__unsaved===1) {
@@ -83,37 +90,20 @@ frappe.ui.form.States = Class.extend({
 		}
 
 		frappe.workflow.get_transitions(this.frm.doc).then(transitions => {
-			this.frm.page.clear_actions_menu();
-			transitions.forEach(d => {
+			$.each(transitions, function(i, d) {
 				if(frappe.user_roles.includes(d.allowed) && has_approval_access(d)) {
 					added = true;
 					me.frm.page.add_action_item(__(d.action), function() {
-						// set the workflow_action for use in form scripts
-						me.frm.selected_workflow_action = d.action;
-						me.frm.script_manager.trigger('before_workflow_action').then(() => {
-							frappe.xcall('frappe.model.workflow.apply_workflow',
-								{doc: me.frm.doc, action: d.action})
-								.then((doc) => {
-									frappe.model.sync(doc);
-									me.frm.refresh();
-									me.frm.selected_workflow_action = null;
-									me.frm.script_manager.trigger("after_workflow_action");
-								});
-						});
+						frappe.xcall('frappe.model.workflow.apply_workflow',
+							{doc: me.frm.doc, action: d.action})
+							.then((doc) => {
+								frappe.model.sync(doc);
+								me.frm.refresh();
+							});
 					});
 				}
 			});
-			if (!added) {
-				//call function and clear cancel button if Cancel doc state is defined in the workfloe
-				frappe.xcall('frappe.model.workflow.can_cancel_document', {doc: this.frm.doc}).then((can_cancel) => {
-					if (!can_cancel) {
-						this.frm.page.clear_secondary_action();
-					}
-				});
-			} else {
-				this.setup_btn(added);
-			}
-
+			this.setup_btn(added);
 		});
 
 	},

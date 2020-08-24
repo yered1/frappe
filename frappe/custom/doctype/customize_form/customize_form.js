@@ -5,6 +5,8 @@ frappe.provide("frappe.customize_form");
 
 frappe.ui.form.on("Customize Form", {
 	onload: function(frm) {
+		frappe.customize_form.add_fields_help(frm);
+
 		frm.set_query("doc_type", function() {
 			return {
 				translate_values: false,
@@ -17,15 +19,6 @@ frappe.ui.form.on("Customize Form", {
 			};
 		});
 
-		frm.set_query("default_print_format", function() {
-			return {
-				filters: {
-					'print_format_type': ['!=', 'JS'],
-					'doc_type': ['=', frm.doc.doc_type]
-				}
-			}
-		});
-
 		$(frm.wrapper).on("grid-row-render", function(e, grid_row) {
 			if(grid_row.doc && grid_row.doc.fieldtype=="Section Break") {
 				$(grid_row.row).css({"font-weight": "bold"});
@@ -35,11 +28,6 @@ frappe.ui.form.on("Customize Form", {
 		$(frm.wrapper).on("grid-make-sortable", function(e, frm) {
 			frm.trigger("setup_sortable");
 		});
-
-		$(frm.wrapper).on("grid-move-row", function(e, frm) {
-			frm.trigger("setup_sortable");
-		});
-
 	},
 
 	doc_type: function(frm) {
@@ -69,13 +57,12 @@ frappe.ui.form.on("Customize Form", {
 		frm.doc.fields.forEach(function(f, i) {
 			var data_row = frm.page.body.find('[data-fieldname="fields"] [data-idx="'+ f.idx +'"] .data-row');
 
-			if(f.is_custom_field) {
-				data_row.addClass("highlight");
+			if(!f.is_custom_field) {
+				data_row.removeClass('sortable-handle');
 			} else {
-				f._sortable = false;
+				data_row.addClass("highlight");
 			}
 		});
-		frm.fields_dict.fields.grid.refresh();
 	},
 
 	refresh: function(frm) {
@@ -84,10 +71,6 @@ frappe.ui.form.on("Customize Form", {
 
 		if(frm.doc.doc_type) {
 			frappe.customize_form.set_primary_action(frm);
-
-			frm.add_custom_button(__('Go to {0} List', [frm.doc.doc_type]), function() {
-				frappe.set_route('List', frm.doc.doc_type);
-			});
 
 			frm.add_custom_button(__('Refresh Form'), function() {
 				frm.script_manager.trigger("doc_type");
@@ -143,7 +126,8 @@ frappe.ui.form.on("Customize Form", {
 			}, 1000);
 		}
 
-	}
+	},
+
 });
 
 frappe.ui.form.on("Customize Form Field", {
@@ -216,3 +200,103 @@ frappe.customize_form.clear_locals_and_refresh = function(frm) {
 	frm.refresh();
 }
 
+frappe.customize_form.add_fields_help = function(frm) {
+	$(frm.grids[0].parent).before(
+		'<div style="padding: 10px">\
+			<a id="fields_help" class="link_type">' + __("Help") + '</a>\
+		</div>');
+	$('#fields_help').click(function() {
+		var d = new frappe.ui.Dialog({
+			title: __('Help: Field Properties'),
+			width: 600
+		});
+
+		var help =
+			"<table cellspacing='25'>\
+				<tr>\
+					<td><b>" + __("Label") + "</b></td>\
+					<td>" + __("Set the display label for the field") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Type") + "</b></td>\
+					<td>" + __("Change type of field. (Currently, Type change is \
+						allowed among 'Currency and Float')") + "</td>\
+				</tr>\
+				<tr>\
+					<td width='25%'><b>" + __("Options") + "</b></td>\
+					<td width='75%'>" + __("Specify the value of the field") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Perm Level") + "</b></td>\
+					<td>\
+						" + __("Assign a permission level to the field.") + "<br />\
+						(" + __("Permissions can be managed via Setup &gt; Role Permissions Manager") + "\
+					</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Width") + "</b></td>\
+					<td>\
+						" + __("Width of the input box") + "<br />\
+						" + __("Example") + ": <i>120px</i>\
+					</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Reqd") + "</b></td>\
+					<td>" + __("Mark the field as Mandatory") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("In Filter") + "</b></td>\
+					<td>" + __("Use the field to filter records") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Hidden") + "</b></td>\
+					<td>" + __("Hide field in form") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Print Hide") + "</b></td>\
+					<td>" + __("Hide field in Standard Print Format") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Report Hide") + "</b></td>\
+					<td>" + __("Hide field in Report Builder") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Allow on Submit") + "</b></td>\
+					<td>" + __("Allow field to remain editable even after submission") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Depends On") + "</b></td>\
+					<td>\
+						Show field if a condition is met<br />\
+						Example: <code>eval:doc.status=='Cancelled'</code>\
+						on a field like \"reason_for_cancellation\" will reveal \
+						\"Reason for Cancellation\" only if the record is Cancelled.\
+					</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Description") + "</b></td>\
+					<td>" + __("Show a description below the field") + "</td>\
+				</tr>\
+				<tr>\
+					<td><b>" + __("Default") + "</b></td>\
+					<td>" + __("Specify a default value") + "</td>\
+				</tr>\
+				<tr>\
+					<td></td>\
+					<td><a class='link_type' \
+							onclick='frappe.customize_form.fields_help_dialog.hide()'\
+							style='color:grey'>" + __("Press Esc to close") + "</a>\
+					</td>\
+				</tr>\
+			</table>"
+
+		$y(d.body, {padding: '32px', textAlign: 'center', lineHeight: '200%'});
+
+		$a(d.body, 'div', '', {textAlign: 'left'}, help);
+
+		d.show();
+
+		frappe.customize_form.fields_help_dialog = d;
+
+	});
+}

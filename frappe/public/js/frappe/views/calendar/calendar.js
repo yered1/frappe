@@ -10,7 +10,7 @@ frappe.views.CalendarView = class CalendarView extends frappe.views.ListView {
 		if (route.length === 3) {
 			const doctype = route[1];
 			const user_settings = frappe.get_user_settings(doctype)['Calendar'] || {};
-			route.push(user_settings.last_calendar || 'Default');
+			route.push(user_settings.last_calendar_view || 'Default');
 			frappe.set_route(route);
 			return true;
 		} else {
@@ -25,12 +25,10 @@ frappe.views.CalendarView = class CalendarView extends frappe.views.ListView {
 	}
 
 	setup_defaults() {
-		return super.setup_defaults()
-			.then(() => {
-				this.page_title = __('{0} Calendar', [this.page_title]);
-				this.calendar_settings = frappe.views.calendar[this.doctype] || {};
-				this.calendar_name = frappe.get_route()[3];
-			});
+		super.setup_defaults();
+		this.page_title = __('{0} Calendar', [this.page_title]);
+		this.calendar_settings = frappe.views.calendar[this.doctype] || {};
+		this.calendar_name = frappe.get_route()[3];
 	}
 
 	setup_view() {
@@ -78,8 +76,7 @@ frappe.views.CalendarView = class CalendarView extends frappe.views.ListView {
 							id: "name",
 							start: doc.start_date_field,
 							end: doc.end_date_field,
-							title: doc.subject_field,
-							allDay: doc.all_day ? 1 : 0
+							title: doc.subject_field
 						}
 					});
 					resolve(options);
@@ -309,7 +306,6 @@ frappe.views.Calendar = Class.extend({
 			doctype: this.doctype,
 			start: this.get_system_datetime(start),
 			end: this.get_system_datetime(end),
-			fields: this.fields,
 			filters: this.list_view.filter_area.get(),
 			field_map: this.field_map
 		};
@@ -352,22 +348,15 @@ frappe.views.Calendar = Class.extend({
 
 			me.fix_end_date_for_event_render(d);
 			me.prepare_colors(d);
-
-			d.title = frappe.utils.html2text(d.title);
-			
 			return d;
 		});
 	},
 	prepare_colors: function(d) {
 		let color, color_name;
 		if(this.get_css_class) {
-			color_name = this.color_map[this.get_css_class(d)] || 'blue';
-
-			if (color_name.startsWith("#")) {
-				color_name = frappe.ui.color.validate_hex(color_name) ?
-					color_name : 'blue';
-			}
-
+			color_name = this.color_map[this.get_css_class(d)];
+			color_name = frappe.ui.color.validate_hex(color_name) ?
+				color_name : 'blue';
 			d.backgroundColor = frappe.ui.color.get(color_name, 'extra-light');
 			d.textColor = frappe.ui.color.get(color_name, 'dark');
 		} else {

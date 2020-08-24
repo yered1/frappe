@@ -1,14 +1,9 @@
-@import 'common';
+@import 'variables';
 
 .active-tag-filters {
-	.add-filter, .filter-tag, .clear-filters {
+	.add-filter, .filter-tag {
 		margin: 0 10px 10px 0;
 	}
-}
-
-.toggle-filter {
-	max-width: 200px !important;
-	.ellipsis;
 }
 
 .active-tag-filters .btn-group {
@@ -23,17 +18,9 @@
 	float: none;
 }
 
-.frappe-list .filter-box {
-	border-bottom: 1px solid @border-color;
-	padding: 10px 15px;
-}
-
 .filter-box {
-	.form-group {
-		@media (min-width: @screen-xs) {
-			margin-bottom: 0;
-		}
-	}
+	border-bottom: 1px solid @border-color;
+	padding: 10px 15px 3px;
 
 	.remove-filter {
 		margin-top: 6px;
@@ -41,9 +28,11 @@
 	}
 
 	.filter-field {
+		padding-right: 15px;
+		width: calc(100% - 36px);
+
 		.frappe-control {
 			position: relative;
-			margin-bottom: 0;
 		}
 	}
 }
@@ -53,7 +42,10 @@
 	.filter-box .row > div[class*="col-sm-"] {
 		padding-right: 0px;
 	}
+
 	.filter-field {
+		width: 65% !important;
+
 		.frappe-control {
 			position: relative;
 		}

@@ -36,10 +36,10 @@ class TestDynamicLinks(unittest.TestCase):
 		}).insert()
 		event.add_comment('Comment', 'test')
 
-		self.assertTrue(frappe.get_all('Comment',
+		self.assertTrue(frappe.get_all('Communication',
 			filters={'reference_doctype':'Event', 'reference_name':event.name}))
 		event.delete()
-		self.assertFalse(frappe.get_all('Comment',
+		self.assertFalse(frappe.get_all('Communication',
 			filters={'reference_doctype':'Event', 'reference_name':event.name}))
 
 	def test_custom_fields(self):

@@ -12,21 +12,6 @@ def get_data():
 					"name": "ToDo",
 					"label": _("To Do"),
 					"description": _("Documents assigned to you and by you."),
-					"onboard": 1,
-				},
-				{
-					"type": "doctype",
-					"name": "Event",
-					"label": _("Calendar"),
-					"link": "List/Event/Calendar",
-					"description": _("Event and other calendars."),
-					"onboard": 1,
-				},
-				{
-					"type": "doctype",
-					"name": "Note",
-					"description": _("Private and public Notes."),
-					"onboard": 1,
 				},
 				{
 					"type": "doctype",
@@ -34,11 +19,23 @@ def get_data():
 					"label": _("Files"),
 				},
 				{
+					"type": "doctype",
+					"name": "Event",
+					"label": _("Calendar"),
+					"link": "List/Event/Calendar",
+					"description": _("Event and other calendars."),
+				},
+				{
 					"type": "page",
 					"label": _("Chat"),
 					"name": "chat",
 					"description": _("Chat messages and other notifications."),
 					"data_doctype": "Communication"
+				},
+				{
+					"type": "doctype",
+					"name": "Note",
+					"description": _("Private and public Notes."),
 				},
 				{
 					"type": "page",
@@ -55,7 +52,6 @@ def get_data():
 					"type": "doctype",
 					"name": "Newsletter",
 					"description": _("Newsletters to contacts, leads."),
-					"onboard": 1,
 				},
 				{
 					"type": "doctype",

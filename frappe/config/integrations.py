@@ -27,11 +27,6 @@ def get_data():
 					"name": "Stripe Settings",
 					"description": _("Stripe payment gateway settings"),
 				},
-				{
-					"type": "doctype",
-					"name": "Paytm Settings",
-					"description": _("Paytm payment gateway settings"),
-				},
 			]
 		},
 		{
@@ -47,11 +42,6 @@ def get_data():
 					"name": "S3 Backup Settings",
 					"description": _("S3 Backup Settings"),
 				},
-				{
-					"type": "doctype",
-					"name": "Google Drive",
-					"description": _("Google Drive Backup."),
-				}
 			]
 		},
 		{
@@ -99,23 +89,28 @@ def get_data():
 			"items": [
 				{
 					"type": "doctype",
-					"name": "Google Settings",
-					"description": _("Google API Settings."),
+					"name": "Google Maps Settings",
+					"description": _("Google Maps integration"),
 				},
 				{
 					"type": "doctype",
-					"name": "Google Contacts",
-					"description": _("Google Contacts Integration."),
+					"name": "GCalendar Settings",
+					"description": _("Configure your google calendar integration"),
 				},
 				{
 					"type": "doctype",
-					"name": "Google Calendar",
-					"description": _("Google Calendar Integration."),
+					"name": "GCalendar Account",
+					"description": _("Configure accounts for google calendar"),
 				},
 				{
 					"type": "doctype",
-					"name": "Google Drive",
-					"description": _("Google Drive Integration."),
+					"name": "GSuite Settings",
+					"description": _("Enter keys to enable integration with Google GSuite"),
+				},
+				{
+					"type": "doctype",
+					"name": "GSuite Templates",
+					"description": _("Google GSuite Templates to integration with DocTypes"),
 				}
 			]
 		}

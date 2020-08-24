@@ -18,7 +18,7 @@ frappe.ui.DropZone = class
 		$dropzone.on('dragover', function (e) {
 			e.preventDefault();
 
-			$title.html(__('Drop'));
+			$title.html('Drop');
 		});
 		$dropzone.on('dragleave', function (e) {
 			e.preventDefault();
@@ -53,5 +53,5 @@ frappe.ui.DropZone.TEMPLATE =
 `;
 frappe.ui.DropZone.OPTIONS  = 
 {
-	title: __('Drop Here')
+	title: 'Drop Here'
 };

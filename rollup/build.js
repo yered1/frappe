@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
 const rollup = require('rollup');
-const { execSync } = require('child_process');
 const log = console.log; // eslint-disable-line
 
 const {
@@ -27,25 +26,18 @@ create_build_file();
 
 if (build_for_app) {
 	build_assets_for_app(build_for_app)
-		.then(() => {
-			run_build_command_for_app(build_for_app);
-		})
 } else {
-	build_assets_for_all_apps()
-		.then(() => {
-			run_build_command_for_apps()
-		});
+	build_assets_for_all_apps();
 }
 
-
 function build_assets_for_all_apps() {
-	return run_serially(
+	run_serially(
 		apps_list.map(app => () => build_assets(app))
 	);
 }
 
 function build_assets_for_app(app) {
-	return build_assets(app)
+	build_assets(app)
 }
 
 function build_assets(app) {
@@ -108,26 +100,6 @@ function concatenate_files() {
 function create_build_file() {
 	const touch = require('touch');
 	touch(path.join(sites_path, '.build'), { force: true });
-}
-
-function run_build_command_for_apps() {
-	let cwd = process.cwd();
-	apps_list.map(app => run_build_command_for_app(app))
-	process.chdir(cwd);
-}
-
-function run_build_command_for_app(app) {
-	if (app === 'frappe') return;
-	let root_app_path = path.resolve(get_app_path(app), '..');
-	let package_json = path.resolve(root_app_path, 'package.json');
-	if (fs.existsSync(package_json)) {
-		let package = require(package_json);
-		if (package.scripts && package.scripts.build) {
-			console.log('\nRunning build command for', chalk.bold(app));
-			process.chdir(root_app_path);
-			execSync('yarn build', { encoding: 'utf8', stdio: 'inherit' });
-		}
-	}
 }
 
 function ensure_js_css_dirs() {

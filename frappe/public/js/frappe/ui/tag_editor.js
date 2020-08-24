@@ -35,14 +35,13 @@ frappe.ui.TagEditor = Class.extend({
 			onTagAdd: (tag) => {
 				if(me.initialized && !me.refreshing) {
 					return frappe.call({
-						method: "frappe.desk.doctype.tag.tag.add_tag",
+						method: 'frappe.desk.tags.add_tag',
 						args: me.get_args(tag),
 						callback: function(r) {
 							var user_tags = me.user_tags ? me.user_tags.split(",") : [];
 							user_tags.push(tag)
 							me.user_tags = user_tags.join(",");
 							me.on_change && me.on_change(me.user_tags);
-							frappe.tags.utils.fetch_tags();
 						}
 					});
 				}
@@ -50,14 +49,13 @@ frappe.ui.TagEditor = Class.extend({
 			onTagRemove: (tag) => {
 				if(!me.refreshing) {
 					return frappe.call({
-						method: "frappe.desk.doctype.tag.tag.remove_tag",
+						method: 'frappe.desk.tags.remove_tag',
 						args: me.get_args(tag),
 						callback: function(r) {
 							var user_tags = me.user_tags.split(",");
 							user_tags.splice(user_tags.indexOf(tag), 1);
 							me.user_tags = user_tags.join(",");
 							me.on_change && me.on_change(me.user_tags);
-							frappe.tags.utils.fetch_tags();
 						}
 					});
 				}
@@ -84,10 +82,12 @@ frappe.ui.TagEditor = Class.extend({
 		$input.on("input", function(e) {
 			var value = e.target.value;
 			frappe.call({
-				method: "frappe.desk.doctype.tag.tag.get_tags",
+				method:"frappe.desk.tags.get_tags",
 				args:{
 					doctype: me.frm.doctype,
 					txt: value.toLowerCase(),
+					cat_tags: me.list_sidebar ?
+						JSON.stringify(me.list_sidebar.get_cat_tags()) : '[]'
 				},
 				callback: function(r) {
 					me.awesomplete.list = r.message;

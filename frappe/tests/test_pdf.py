@@ -4,22 +4,20 @@ from __future__ import unicode_literals
 
 import unittest
 
-import frappe.utils.pdf as pdfgen
-import frappe, io, six
-from PyPDF2 import PdfFileReader
+from frappe.utils.pdf import read_options_from_html
 
 #class TestPdfBorders(unittest.TestCase):
-class TestPdf(unittest.TestCase):
-	@property
-	def html(self):
-		return """<style>
-			.print-format {
-			 margin-top: 0mm;
-			 margin-left: 10mm;
-			 margin-right: 0mm;
-			}
-			</style>
-			<p>This is a test html snippet</p>
+class TestPdfBorders(unittest.TestCase):
+    def test_pdf_borders(self):
+        html = """
+			<style>
+            .print-format {
+             margin-top: 0mm;
+             margin-left: 10mm;
+             margin-right: 0mm;
+            }
+            </style>
+            <p>This is a test html snippet</p>
 			<div class="more-info">
 				<a href="http://test.com">Test link 1</a>
 				<a href="/about">Test link 2</a>
@@ -28,22 +26,16 @@ class TestPdf(unittest.TestCase):
 			</div>
 			<div style="background-image: url('/assets/frappe/bg.jpg')">
 				Please mail us at <a href="mailto:test@example.com">email</a>
-			</div>"""
+			</div>
+		"""
 
-	def runTest(self):
-		self.test_read_options_from_html()
+        html, html_options = read_options_from_html(html)
+        self.assertTrue(html_options['margin-top'] == '0')
+        self.assertTrue(html_options['margin-left'] == '10')
+        self.assertTrue(html_options['margin-right'] == '0')
 
-	def test_read_options_from_html(self):
-		_, html_options = pdfgen.read_options_from_html(self.html)
-		self.assertTrue(html_options['margin-top'] == '0')
-		self.assertTrue(html_options['margin-left'] == '10')
-		self.assertTrue(html_options['margin-right'] == '0')
-
-	def test_pdf_encryption(self):
-		password = "qwe"
-		pdf = pdfgen.get_pdf(self.html, options={"password": password})
-		reader = PdfFileReader(io.BytesIO(pdf))
-		self.assertTrue(reader.isEncrypted)
-		if six.PY2:
-			password = frappe.safe_encode(password)
-		self.assertTrue(reader.decrypt(password))
+# allows to run $ bench execute frappe.tests.test_pdf.run_tests
+def run_tests():
+    t = TestPdfBorders("test_pdf_borders")
+    t.test_pdf_borders()
+    return
