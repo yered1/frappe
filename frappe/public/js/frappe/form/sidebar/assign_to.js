@@ -87,17 +87,23 @@ frappe.ui.form.AssignTo = Class.extend({
 
 		if(!me.assign_to) {
 			me.assign_to = new frappe.ui.form.AssignToDialog({
-				method: "frappe.desk.form.assign_to.add",
+				obj: me,
+				method: 'frappe.desk.form.assign_to.add',
 				doctype: me.frm.doctype,
 				docname: me.frm.docname,
-				frm: me.frm,
-				callback: function (r) {
+				callback: function(r) {
 					me.render(r.message);
 				}
 			});
 		}
 		me.assign_to.dialog.clear();
+
+		if(me.frm.meta.title_field) {
+			me.assign_to.dialog.set_value("description", me.frm.doc[me.frm.meta.title_field])
+		}
+
 		me.assign_to.dialog.show();
+		me.assign_to = null;
 	},
 	remove: function(owner) {
 		var me = this;
@@ -124,126 +130,84 @@ frappe.ui.form.AssignTo = Class.extend({
 
 frappe.ui.form.AssignToDialog = Class.extend({
 	init: function(opts){
-		$.extend(this, opts);
+		var me = this
+		var dialog = new frappe.ui.Dialog({
+			title: __('Add to To Do'),
+			fields: [
+				{ fieldtype: 'Link', fieldname: 'assign_to', options: 'User', label: __("Assign To"), reqd: true, filters: { 'user_type': 'System User' }},
+				{ fieldtype: 'Check', fieldname: 'myself', label: __("Assign to me"), "default": 0 },
+				{ fieldtype: 'Small Text', fieldname: 'description', label: __("Comment") },
+				{ fieldtype: 'Section Break' },
+				{ fieldtype: 'Column Break' },
+				{ fieldtype: 'Date', fieldname: 'date', label: __("Complete By") },
+				{ fieldtype: 'Check', fieldname: 'notify', label: __("Notify by Email"), default: 1},
+				{ fieldtype: 'Column Break' },
+				{ fieldtype: 'Select', fieldname: 'priority', label: __("Priority"),
+					options: [
+						{ value: 'Low', label: __('Low') },
+						{ value: 'Medium', label: __('Medium') },
+						{ value: 'High', label: __('High') }
+					],
+					// Pick up priority from the source document, if it exists and is available in ToDo
+					'default': ["Low", "Medium", "High"].includes(opts.obj.frm && opts.obj.frm.doc.priority
+						? opts.obj.frm.doc.priority : 'Medium')
+				},
+			],
+			primary_action: function() { frappe.ui.add_assignment(opts, this) },
+			primary_action_label: __("Add")
+		})
+		$.extend(me, dialog);
 
-		this.make();
-		this.set_description_from_doc();
+		me.dialog = dialog;
+
+		me.dialog.fields_dict.assign_to.get_query = "frappe.core.doctype.user.user.user_query";
+
+		var myself = me.dialog.get_input("myself").on("click", function() {
+			me.toggle_myself(this);
+		});
+		me.toggle_myself(myself);
 	},
-	make: function() {
-		let me = this;
+	toggle_myself: function(myself) {
+		var me = this;
+		if($(myself).prop("checked")) {
+			me.dialog.set_value("assign_to", frappe.session.user);
+			me.dialog.set_value("notify", 0);
+			me.dialog.get_field("notify").$wrapper.toggle(false);
+			me.dialog.get_field("assign_to").$wrapper.toggle(false);
+		} else {
+			me.dialog.set_value("assign_to", "");
+			me.dialog.get_field("notify").$wrapper.toggle(true);
+			me.dialog.get_field("assign_to").$wrapper.toggle(true);
+		}
+	},
 
-		me.dialog = new frappe.ui.Dialog({
-			title: __('Add to ToDo'),
-			fields: me.get_fields(),
-			primary_action_label: __("Add"),
-			primary_action: function() {
-				let args = me.dialog.get_values();
+});
 
-				if (args && args.assign_to) {
-					me.dialog.set_message("Assigning...");
-
-					frappe.call({
-						method: me.method,
-						args: $.extend(args, {
-							doctype: me.doctype,
-							name: me.docname,
-							assign_to: args.assign_to,
-							bulk_assign: me.bulk_assign || false,
-							re_assign: me.re_assign || false
-						}),
-						btn: me.dialog.get_primary_btn(),
-						callback: function(r) {
-							if (!r.exc) {
-								if (me.callback) {
-									me.callback(r);
-								}
-								me.dialog && me.dialog.hide();
-							} else {
-								me.dialog.clear_message();
-							}
-						},
-					});
+frappe.ui.add_assignment = function(opts, dialog) {
+	var assign_to = dialog.fields_dict.assign_to.get_value();
+	var args = dialog.get_values();
+	if(args && assign_to) {
+		dialog.set_message('Assigning...');
+		return frappe.call({
+			method: opts.method,
+			args: $.extend(args, {
+				doctype: opts.doctype,
+				name: opts.docname,
+				assign_to: assign_to,
+				bulk_assign:  opts.bulk_assign || false,
+				re_assign: opts.re_assign || false
+			}),
+			btn: dialog.get_primary_btn(),
+			callback: function(r) {
+				if(!r.exc) {
+					if(opts.callback){
+						opts.callback(r);
+					}
+					dialog && dialog.hide();
+				} else {
+					dialog.clear_message();
 				}
 			},
 		});
-	},
-	assign_to_me: function() {
-		let me = this;
-		let assign_to = [];
-
-		if (me.dialog.get_value("assign_to_me")) {
-			assign_to.push(frappe.session.user);
-		}
-
-		me.dialog.set_value("assign_to", assign_to);
-	},
-	set_description_from_doc: function() {
-		let me = this;
-
-		if (me.frm && me.frm.meta.title_field) {
-			me.dialog.set_value("description", me.frm.doc[me.frm.meta.title_field]);
-		}
-	},
-	get_fields: function() {
-		let me = this;
-
-		return [
-			{
-				fieldtype: 'MultiSelectPills',
-				fieldname: 'assign_to',
-				label: __("Assign To"),
-				reqd: true,
-				get_data: function(txt) {
-					return frappe.db.get_link_options("User", txt, {user_type: "System User", enabled: 1});
-				}
-			},
-			{
-				label: __("Assign to me"),
-				fieldtype: 'Check',
-				fieldname: 'assign_to_me',
-				default: 0,
-				onchange: () => me.assign_to_me()
-			},
-			{
-				label: __("Comment"),
-				fieldtype: 'Small Text',
-				fieldname: 'description'
-			},
-			{
-				fieldtype: 'Section Break'
-			},
-			{
-				fieldtype: 'Column Break'
-			},
-			{
-				label: __("Complete By"),
-				fieldtype: 'Date',
-				fieldname: 'date'
-			},
-			{
-				fieldtype: 'Column Break'
-			},
-			{
-				label: __("Priority"),
-				fieldtype: 'Select',
-				fieldname: 'priority',
-				options: [
-					{
-						value: 'Low',
-						label: __('Low')
-					},
-					{
-						value: 'Medium',
-						label: __('Medium')
-					},
-					{
-						value: 'High',
-						label: __('High')
-					}
-				],
-				// Pick up priority from the source document, if it exists and is available in ToDo
-				default: ["Low", "Medium", "High"].includes(me.frm && me.frm.doc.priority ? me.frm.doc.priority : 'Medium')
-			}
-		];
 	}
-});
+}

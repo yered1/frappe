@@ -13,7 +13,7 @@ class DBTable:
 	def __init__(self, doctype, meta=None):
 		self.doctype = doctype
 		self.table_name = 'tab{}'.format(doctype)
-		self.meta = meta or frappe.get_meta(doctype, False)
+		self.meta = meta or frappe.get_meta(doctype)
 		self.columns = {}
 		self.current_columns = {}
 
@@ -33,7 +33,6 @@ class DBTable:
 		if self.is_new():
 			self.create()
 		else:
-			frappe.cache().hdel('table_columns', self.table_name)
 			self.alter()
 
 	def create(self):
@@ -65,35 +64,64 @@ class DBTable:
 		"""
 			get columns from docfields and custom fields
 		"""
-		fields = self.meta.get_fieldnames_with_value(True)
+		fl = frappe.db.sql("SELECT * FROM `tabDocField` WHERE parent = %s", self.doctype, as_dict = 1)
+		lengths = {}
+		precisions = {}
+		uniques = {}
 
 		# optional fields like _comments
-		if not self.meta.get('istable'):
+		if not self.meta.istable:
 			for fieldname in frappe.db.OPTIONAL_COLUMNS:
-				fields.append({
+				fl.append({
 					"fieldname": fieldname,
 					"fieldtype": "Text"
 				})
 
 			# add _seen column if track_seen
-			if self.meta.get('track_seen'):
-				fields.append({
+			if getattr(self.meta, 'track_seen', False):
+				fl.append({
 					'fieldname': '_seen',
 					'fieldtype': 'Text'
 				})
 
-		for field in fields:
-			self.columns[field.get('fieldname')] = DbColumn(
-				self,
-				field.get('fieldname'),
-				field.get('fieldtype'),
-				field.get('length'),
-				field.get('default'),
-				field.get('search_index'),
-				field.get('options'),
-				field.get('unique'),
-				field.get('precision')
-			)
+		if (not frappe.flags.in_install_db
+			and (frappe.flags.in_install != "frappe"
+			or frappe.flags.ignore_in_install)):
+			custom_fl = frappe.db.sql("""
+				SELECT * FROM `tabCustom Field`
+				WHERE dt = %s AND docstatus < 2
+				""", (self.doctype,), as_dict=1)
+			if custom_fl: fl += custom_fl
+
+			# apply length, precision and unique from property setters
+			for ps in frappe.get_all("Property Setter",
+				fields=["field_name", "property", "value"],
+				filters={
+					"doc_type": self.doctype,
+					"doctype_or_field": "DocField",
+					"property": ["in", ["precision", "length", "unique"]]
+				}):
+
+				if ps.property=="length":
+					lengths[ps.field_name] = cint(ps.value)
+
+				elif ps.property=="precision":
+					precisions[ps.field_name] = cint(ps.value)
+
+				elif ps.property=="unique":
+					uniques[ps.field_name] = cint(ps.value)
+
+		for f in fl:
+			self.columns[f['fieldname']] = DbColumn(self,
+				f['fieldname'],
+				f['fieldtype'],
+				lengths.get(f["fieldname"]) or f.get('length'),
+				f.get('default'),
+				f.get('search_index'),
+				f.get('options'),
+				uniques.get(f["fieldname"],
+				f.get('unique')),
+				precisions.get(f['fieldname']) or f.get('precision'))
 
 	def validate(self):
 		"""Check if change in varchar length isn't truncating the columns"""
@@ -137,14 +165,16 @@ class DBTable:
 						if frappe.db.is_missing_column(e):
 							# Unknown column 'column_name' in 'field list'
 							continue
-						raise
+						else:
+							raise
 
 					if max_length and max_length[0][0] and max_length[0][0] > new_length:
 						if col.fieldname in self.columns:
 							self.columns[col.fieldname].length = current_length
-						info_message = _("Reverting length to {0} for '{1}' in '{2}'. Setting the length as {3} will cause truncation of data.") \
-							.format(current_length, col.fieldname, self.doctype, new_length)
-						frappe.msgprint(info_message)
+
+						frappe.msgprint(_("""Reverting length to {0} for '{1}' in '{2}';
+							Setting the length as {3} will cause truncation of data.""")
+							.format(current_length, col.fieldname, self.doctype, new_length))
 
 	def is_new(self):
 		return self.table_name not in frappe.db.get_tables()
@@ -208,7 +238,7 @@ class DbColumn:
 			return
 
 		# type
-		if (current_def['type'] != column_type):
+		if ((current_def['type']) != column_type):
 			self.table.change_type.append(self)
 
 		# unique
@@ -235,23 +265,7 @@ class DbColumn:
 		if "decimal" in current_def['type']:
 			return self.default_changed_for_decimal(current_def)
 		else:
-			cur_default = current_def['default']
-			new_default = self.default
-			if cur_default == "NULL" or cur_default is None:
-				cur_default = None
-			else:
-				# Strip quotes from default value
-				# eg. database returns default value as "'System Manager'"
-				cur_default = cur_default.lstrip("'").rstrip("'")
-
-			fieldtype = self.fieldtype
-			if fieldtype in ['Int', 'Check']:
-				cur_default = cint(cur_default)
-				new_default = cint(new_default)
-			elif fieldtype in ['Currency', 'Float', 'Percent']:
-				cur_default = flt(cur_default)
-				new_default = flt(new_default)
-			return cur_default != new_default
+			return current_def['default'] != self.default
 
 	def default_changed_for_decimal(self, current_def):
 		try:
@@ -321,3 +335,5 @@ def add_column(doctype, column_name, fieldtype, precision=None):
 	frappe.db.commit()
 	frappe.db.sql("alter table `tab%s` add column %s %s" % (doctype,
 		column_name, get_definition(fieldtype, precision)))
+
+

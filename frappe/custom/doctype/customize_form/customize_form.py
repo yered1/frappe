@@ -22,14 +22,13 @@ doctype_properties = {
 	'sort_field': 'Data',
 	'sort_order': 'Data',
 	'default_print_format': 'Data',
-	'read_only_onload': 'Check',
 	'allow_copy': 'Check',
 	'istable': 'Check',
 	'quick_entry': 'Check',
 	'editable_grid': 'Check',
 	'max_attachments': 'Int',
-	'image_view': 'Check',
 	'track_changes': 'Check',
+	'track_views': 'Check',
 }
 
 docfield_properties = {
@@ -70,7 +69,7 @@ docfield_properties = {
 
 allowed_fieldtype_change = (('Currency', 'Float', 'Percent'), ('Small Text', 'Data'),
 	('Text', 'Data'), ('Text', 'Text Editor', 'Code', 'Signature', 'HTML Editor'), ('Data', 'Select'),
-	('Text', 'Small Text'), ('Text', 'Data', 'Barcode'), ('Code', 'Geolocation'))
+	('Text', 'Small Text'), ('Text', 'Data', 'Barcode'), ('Code', 'Geolocation'), ('Table', 'Table MultiSelect'))
 
 allowed_fieldtype_for_options_change = ('Read Only', 'HTML', 'Select', 'Data')
 
@@ -152,7 +151,6 @@ class CustomizeForm(Document):
 			return
 
 		self.flags.update_db = False
-		self.flags.rebuild_doctype_for_global_search = False
 
 		self.set_property_setters()
 		self.update_custom_fields()
@@ -160,17 +158,12 @@ class CustomizeForm(Document):
 		validate_fields_for_doctype(self.doc_type)
 
 		if self.flags.update_db:
-			from frappe.model.db_schema import updatedb
-			updatedb(self.doc_type)
+			frappe.db.updatedb(self.doc_type)
 
 		if not hasattr(self, 'hide_success') or not self.hide_success:
-			frappe.msgprint(_("{0} updated").format(_(self.doc_type)))
+			frappe.msgprint(_("{0} updated").format(_(self.doc_type)), alert=True)
 		frappe.clear_cache(doctype=self.doc_type)
 		self.fetch_to_customize()
-
-		if self.flags.rebuild_doctype_for_global_search:
-			frappe.enqueue('frappe.utils.global_search.rebuild_for_doctype',
-				now=True, doctype=self.doc_type)
 
 	def set_property_setters(self):
 		meta = frappe.get_meta(self.doc_type)
@@ -231,10 +224,6 @@ class CustomizeForm(Document):
 					elif property == 'translatable' and not supports_translation(df.get('fieldtype')):
 						frappe.msgprint(_("You can't set 'Translatable' for field {0}").format(df.label))
 						continue
-
-					elif (property == 'in_global_search' and
-						df.in_global_search != meta_df[0].get("in_global_search")):
-						self.flags.rebuild_doctype_for_global_search = True
 
 					self.make_property_setter(property=property, value=df.get(property),
 						property_type=docfield_properties[property], fieldname=df.fieldname)
@@ -341,7 +330,7 @@ class CustomizeForm(Document):
 			try:
 				property_value = frappe.db.get_value("DocType", self.doc_type, property_name)
 			except Exception as e:
-				if e.args[0]==1054:
+				if frappe.db.is_column_missing(e):
 					property_value = None
 				else:
 					raise
@@ -361,7 +350,8 @@ class CustomizeForm(Document):
 		if not self.doc_type:
 			return
 
-		frappe.db.sql("""delete from `tabProperty Setter` where doc_type=%s
-			and !(`field_name`='naming_series' and `property`='options')""", self.doc_type)
+		frappe.db.sql("""DELETE FROM `tabProperty Setter` WHERE doc_type=%s
+			and `field_name`!='naming_series'
+			and `property`!='options'""", self.doc_type)
 		frappe.clear_cache(doctype=self.doc_type)
 		self.fetch_to_customize()

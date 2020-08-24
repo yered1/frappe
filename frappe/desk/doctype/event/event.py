@@ -43,10 +43,17 @@ class Event(Document):
 	def sync_communication(self):
 		if self.event_participants:
 			for participant in self.event_participants:
-				communication_name = frappe.db.get_value("Communication", dict(reference_doctype=self.doctype, reference_name=self.name, timeline_doctype=participant.reference_doctype, timeline_name=participant.reference_docname), "name")
-				if communication_name:
-					communication = frappe.get_doc("Communication", communication_name)
-					self.update_communication(participant, communication)
+				comms = frappe.get_list("Communication", filters=[
+					["Communication", "reference_doctype", "=", self.doctype],
+					["Communication", "reference_name", "=", self.name],
+					["Communication Link", "link_doctype", "=", participant.reference_doctype],
+					["Communication Link", "link_name", "=", participant.reference_docname]
+				], fields=["name"])
+
+				if comms:
+					for comm in comms:
+						communication = frappe.get_doc("Communication", comm.name)
+						self.update_communication(participant, communication)
 				else:
 					meta = frappe.get_meta(participant.reference_doctype)
 					if hasattr(meta, "allow_events_in_timeline") and meta.allow_events_in_timeline==1:
@@ -62,12 +69,11 @@ class Event(Document):
 		communication.subject = self.subject
 		communication.content = self.description if self.description else self.subject
 		communication.communication_date = self.starts_on
-		communication.timeline_doctype = participant.reference_doctype
-		communication.timeline_name = participant.reference_docname
 		communication.reference_doctype = self.doctype
 		communication.reference_name = self.name
 		communication.communication_medium = communication_mapping[self.event_category] if self.event_category else ""
 		communication.status = "Linked"
+		communication.add_link(participant.reference_doctype, participant.reference_docname)
 		communication.save(ignore_permissions=True)
 
 @frappe.whitelist()
@@ -76,9 +82,18 @@ def delete_communication(event, reference_doctype, reference_docname):
 	if isinstance(event, string_types):
 		event = json.loads(event)
 
-	communication_name = frappe.db.get_value("Communication", dict(reference_doctype=event["doctype"], reference_name=event["name"], timeline_doctype=deleted_participant.reference_doctype, timeline_name=deleted_participant.reference_docname), "name")
-	if communication_name:
-		deletion = frappe.get_doc("Communication", communication_name).delete()
+	comms = frappe.get_list("Communication", filters=[
+		["Communication", "reference_doctype", "=", event.get("doctype")],
+		["Communication", "reference_name", "=", event.get("name")],
+		["Communication Link", "link_doctype", "=", deleted_participant.reference_doctype],
+		["Communication Link", "link_name", "=", deleted_participant.reference_docname]
+	], fields=["name"])
+
+	if comms:
+		deletion = []
+		for comm in comms:
+			delete = frappe.get_doc("Communication", comm.name).delete()
+			deletion.append(delete)
 
 		return deletion
 
@@ -87,9 +102,8 @@ def delete_communication(event, reference_doctype, reference_docname):
 
 def get_permission_query_conditions(user):
 	if not user: user = frappe.session.user
-	return """(tabEvent.event_type='Public' or tabEvent.owner='%(user)s')""" % {
+	return """(`tabEvent`.`event_type`='Public' or `tabEvent`.`owner`=%(user)s)""" % {
 			"user": frappe.db.escape(user),
-			"roles": "', '".join([frappe.db.escape(r) for r in frappe.get_roles(user)])
 		}
 
 def has_permission(doc, user):
@@ -127,28 +141,26 @@ def get_events(start, end, user=None, for_reminder=False, filters=None):
 		user = frappe.session.user
 	if isinstance(filters, string_types):
 		filters = json.loads(filters)
-	roles = frappe.get_roles(user)
-	events = frappe.db.sql("""select name, subject, description, color,
+	events = frappe.db.sql("""select `name`, subject, description, color,
 		starts_on, ends_on, owner, all_day, event_type, repeat_this_event, repeat_on,repeat_till,
 		monday, tuesday, wednesday, thursday, friday, saturday, sunday
-		from tabEvent where ((
+		from `tabEvent` where ((
 			(date(starts_on) between date(%(start)s) and date(%(end)s))
 			or (date(ends_on) between date(%(start)s) and date(%(end)s))
 			or (date(starts_on) <= date(%(start)s) and date(ends_on) >= date(%(end)s))
 		) or (
 			date(starts_on) <= date(%(start)s) and repeat_this_event=1 and
-			ifnull(repeat_till, "3000-01-01") > date(%(start)s)
+			coalesce(repeat_till, '3000-01-01') > date(%(start)s)
 		))
 		{reminder_condition}
 		{filter_condition}
 		and (event_type='Public' or owner=%(user)s
 		or exists(select name from `tabDocShare` where
-			tabDocShare.share_doctype="Event" and `tabDocShare`.share_name=tabEvent.name
-			and tabDocShare.user=%(user)s))
+			`tabDocShare`.share_doctype='Event' and `tabDocShare`.share_name=`tabEvent`.`name`
+			and `tabDocShare`.`user`=%(user)s))
 		order by starts_on""".format(
 			filter_condition=get_filters_cond('Event', filters, []),
-			reminder_condition="and ifnull(send_reminder,0)=1" if for_reminder else "",
-			roles=", ".join('"{}"'.format(frappe.db.escape(r)) for r in roles)
+			reminder_condition="and coalesce(send_reminder, 0)=1" if for_reminder else ""
 		), {
 			"start": start,
 			"end": end,

@@ -1,10 +1,10 @@
 context('Recorder', () => {
 	before(() => {
-		cy.login();
+		cy.login('Administrator', 'qwe');
 	});
 
 	it('Navigate to Recorder', () => {
-		cy.visit('/desk#workspace/Website');
+		cy.visit('/desk');
 		cy.awesomebar('recorder');
 		cy.get('h1').should('contain', 'Recorder');
 		cy.location('hash').should('eq', '#recorder');
@@ -61,7 +61,7 @@ context('Recorder', () => {
 
 		cy.visit('/desk#recorder');
 
-		cy.get('.list-row-container span').contains('frappe.desk.reportview.get').click();
+		cy.contains('.list-row-container span', 'frappe.desk.reportview.get').click();
 
 		cy.location('hash').should('contain', '#recorder/request/');
 		cy.get('form').should('contain', 'frappe.desk.reportview.get');

@@ -1,5 +1,4 @@
 from __future__ import unicode_literals
-import frappe
 from frappe import _
 from frappe.desk.moduleview import add_setup_section
 
@@ -14,13 +13,6 @@ def get_data():
 					"name": "System Settings",
 					"label": _("System Settings"),
 					"description": _("Language, Date and Time settings"),
-					"hide_count": True
-				},
-				{
-					"type": "doctype",
-					"name": "Global Defaults",
-					"label": _("Global Defaults"),
-					"description": _("Company, Fiscal Year and Currency defaults"),
 					"hide_count": True
 				},
 				{
@@ -96,7 +88,7 @@ def get_data():
 			]
 		},
 		{
-			"label": _("Email / Notifications"),
+			"label": _("Email"),
 			"icon": "fa fa-envelope",
 			"items": [
 				{
@@ -128,12 +120,6 @@ def get_data():
 					"type": "doctype",
 					"name": "Newsletter",
 					"description": _("Create and manage newsletter")
-				},
-				{
-					"type": "doctype",
-					"route": "Form/Notification Settings/{}".format(frappe.session.user),
-					"name": "Notification Settings",
-					"description": _("Configure notifications for mentions, assignments, energy points and more.")
 				}
 			]
 		},
@@ -183,8 +169,13 @@ def get_data():
 					"name": "Workflow Action",
 					"description": _("Actions for workflow (e.g. Approve, Cancel).")
 				},
+				{
+					"type": "doctype",
+					"name": "Assignment Rule",
+					"description": _("Set up rules for user assignments.")
+				}
 			]
-		}
+		},
 	]
 	add_setup_section(data, "frappe", "website", _("Website"), "fa fa-globe")
 	return data

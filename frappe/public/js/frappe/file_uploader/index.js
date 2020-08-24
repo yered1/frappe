@@ -12,8 +12,7 @@ export default class FileUploader {
 		restrictions,
 		upload_notes,
 		allow_multiple,
-		as_dataurl,
-		disable_file_browser,
+		as_dataurl
 	} = {}) {
 		if (!wrapper) {
 			this.make_dialog();
@@ -34,8 +33,7 @@ export default class FileUploader {
 					restrictions,
 					upload_notes,
 					allow_multiple,
-					as_dataurl,
-					disable_file_browser,
+					as_dataurl
 				}
 			})
 		});

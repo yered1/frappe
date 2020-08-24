@@ -6,14 +6,14 @@ import './share';
 import './review';
 import './document_follow';
 import './user_image';
-import './form_sidebar_users';
+import './form_viewers';
 
-frappe.ui.form.Sidebar = class {
-	constructor(opts) {
+frappe.ui.form.Sidebar = Class.extend({
+	init: function(opts) {
 		$.extend(this, opts);
-	}
+	},
 
-	make () {
+	make: function() {
 		var sidebar_content = frappe.render_template("form_sidebar", {doctype: this.frm.doctype, frm:this.frm});
 
 		this.sidebar = $('<div class="form-sidebar overlay-sidebar hidden-xs hidden-sm"></div>')
@@ -32,20 +32,16 @@ frappe.ui.form.Sidebar = class {
 
 		this.make_tags();
 		this.make_like();
-		if (frappe.boot.user.document_follow_notify) {
-			this.make_follow();
-		}
+		this.make_follow();
 
 		this.bind_events();
-		this.setup_keyboard_shortcuts();
-		this.show_auto_repeat_status();
 		frappe.ui.form.setup_user_image_event(this.frm);
 
 		this.refresh();
 
-	}
+	},
 
-	bind_events () {
+	bind_events: function() {
 		var me = this;
 
 		// scroll to comments
@@ -58,93 +54,40 @@ frappe.ui.form.Sidebar = class {
 				me.refresh_like();
 			});
 		});
-	}
+	},
 
-	setup_keyboard_shortcuts() {
-		// add assignment shortcut
-		let assignment_link = this.sidebar.find('.add-assignment');
-		frappe.ui.keys
-			.get_shortcut_group(this.page)
-			.add(assignment_link);
-	}
-
-	refresh () {
-		if (this.frm.doc.__islocal) {
+	refresh: function() {
+		if(this.frm.doc.__islocal) {
 			this.sidebar.toggle(false);
 		} else {
 			this.sidebar.toggle(true);
 			this.frm.assign_to.refresh();
 			this.frm.attachments.refresh();
 			this.frm.shared.refresh();
-			if (frappe.boot.user.document_follow_notify) {
-				this.frm.follow.refresh();
-			}
+			this.frm.follow.refresh();
 			this.frm.viewers.refresh();
-			this.frm.tags && this.frm.tags.refresh(this.frm.get_docinfo().tags);
-
-			if (this.frm.doc.route && cint(frappe.boot.website_tracking_enabled)) {
-				let route = this.frm.doc.route;
-				frappe.utils.get_page_view_count(route).then((res) => {
-					this.sidebar
-						.find(".pageview-count")
-						.html(
-							__("{0} Page Views", [String(res.message).bold()])
-						);
-				});
-			}
-
-			this.sidebar
-				.find(".modified-by")
-				.html(
-					__("{0} edited this {1}", [
-						frappe.user.full_name(this.frm.doc.modified_by).bold(),
-						"<br>" + comment_when(this.frm.doc.modified),
-					])
-				);
-			this.sidebar
-				.find(".created-by")
-				.html(
-					__("{0} created this {1}", [
-						frappe.user.full_name(this.frm.doc.owner).bold(),
-						"<br>" + comment_when(this.frm.doc.creation),
-					])
-				);
+			this.frm.tags && this.frm.tags.refresh(this.frm.doc._user_tags);
+			this.sidebar.find(".modified-by").html(__("{0} edited this {1}",
+				["<strong>" + frappe.user.full_name(this.frm.doc.modified_by) + "</strong>",
+					"<br>" + comment_when(this.frm.doc.modified)]));
+			this.sidebar.find(".created-by").html(__("{0} created this {1}",
+				["<strong>" + frappe.user.full_name(this.frm.doc.owner) + "</strong>",
+					"<br>" + comment_when(this.frm.doc.creation)]));
 
 			this.refresh_like();
 			frappe.ui.form.set_user_image(this.frm);
 		}
-	}
+	},
 
-	show_auto_repeat_status() {
-		if (this.frm.meta.allow_auto_repeat && this.frm.doc.auto_repeat) {
-			const me = this;
-			frappe.call({
-				method: "frappe.client.get_value",
-				args:{
-					doctype: "Auto Repeat",
-					filters: {
-						name: this.frm.doc.auto_repeat
-					},
-					fieldname: ["frequency"]
-				},
-				callback: function(res) {
-					me.sidebar.find(".auto-repeat-status").html(__("Repeats {0}", [res.message.frequency]));
-					me.sidebar.find(".auto-repeat-status").on("click", function(){
-						frappe.set_route("Form", "Auto Repeat", me.frm.doc.auto_repeat);
-					});
-				}
-			});
-		}
-	}
-
-	refresh_comments() {
+	refresh_comments: function() {
 		$.map(this.frm.timeline.get_communications(), function(c) {
 			return (c.communication_type==="Communication" || (c.communication_type=="Comment" && c.comment_type==="Comment")) ? c : null;
 		});
 		this.comments.find(".n-comments").html(this.frm.get_docinfo().total_comments);
-	}
+	},
 
-	make_tags() {
+	make_tags: function() {
+		var me = this;
 		if (this.frm.meta.issingle) {
 			this.sidebar.find(".form-tags").toggle(false);
 			return;
@@ -154,65 +97,57 @@ frappe.ui.form.Sidebar = class {
 			parent: this.sidebar.find(".tag-area"),
 			frm: this.frm,
 			on_change: function(user_tags) {
-				this.frm.tags && this.frm.tags.refresh(user_tags);
+				me.frm.doc._user_tags = user_tags;
 			}
 		});
-	}
-
-	make_attachments() {
+	},
+	make_attachments: function() {
 		var me = this;
 		this.frm.attachments = new frappe.ui.form.Attachments({
 			parent: me.sidebar.find(".form-attachments"),
 			frm: me.frm
 		});
-	}
-
-	make_assignments() {
+	},
+	make_assignments: function() {
 		this.frm.assign_to = new frappe.ui.form.AssignTo({
 			parent: this.sidebar.find(".form-assignments"),
 			frm: this.frm
 		});
-	}
-
-	make_shared() {
+	},
+	make_shared: function() {
 		this.frm.shared = new frappe.ui.form.Share({
 			frm: this.frm,
 			parent: this.sidebar.find(".form-shared")
 		});
-	}
-
-	make_viewers() {
-		this.frm.viewers = new frappe.ui.form.SidebarUsers({
+	},
+	make_viewers: function() {
+		this.frm.viewers = new frappe.ui.form.Viewers({
 			frm: this.frm,
-			$wrapper: this.sidebar,
+			parent: this.sidebar.find(".form-viewers")
 		});
-	}
-
-	add_user_action(label, click) {
+	},
+	add_user_action: function(label, click) {
 		return $('<a>').html(label).appendTo($('<li class="user-action-row">')
 			.appendTo(this.user_actions.removeClass("hidden"))).on("click", click);
-	}
-
-	clear_user_actions() {
+	},
+	clear_user_actions: function() {
 		this.user_actions.addClass("hidden")
 		this.user_actions.find(".user-action-row").remove();
-	}
+	},
 
-	make_like() {
+	make_like: function() {
 		this.like_wrapper = this.sidebar.find(".liked-by");
 		this.like_icon = this.sidebar.find(".liked-by .octicon-heart");
 		this.like_count = this.sidebar.find(".liked-by .likes-count");
 		frappe.ui.setup_like_popover(this.sidebar.find(".liked-by-parent"), ".liked-by");
-	}
-
-	make_follow() {
+	},
+	make_follow: function(){
 		this.frm.follow = new frappe.ui.form.DocumentFollow({
 			frm: this.frm,
 			parent: this.sidebar.find(".followed-by-section")
 		});
-	}
-
-	refresh_like() {
+	},
+	refresh_like: function() {
 		if (!this.like_icon) {
 			return;
 		}
@@ -225,21 +160,21 @@ frappe.ui.form.Sidebar = class {
 			.attr("data-name", this.frm.doc.name);
 
 		this.like_count.text(JSON.parse(this.frm.doc._liked_by || "[]").length);
-	}
+	},
 
-	refresh_image() {
-	}
+	refresh_image: function() {
+	},
 
-	make_review() {
+	make_review: function() {
 		if (frappe.boot.energy_points_enabled && !this.frm.is_new()) {
 			this.frm.reviews = new frappe.ui.form.Review({
 				parent: this.sidebar.find(".form-reviews"),
 				frm: this.frm
 			});
 		}
-	}
+	},
 
-	reload_docinfo(callback) {
+	reload_docinfo: function(callback) {
 		frappe.call({
 			method: "frappe.desk.form.load.get_docinfo",
 			args: {
@@ -249,11 +184,11 @@ frappe.ui.form.Sidebar = class {
 			callback: (r) => {
 				// docinfo will be synced
 				if(callback) callback(r.docinfo);
-				this.frm.timeline && this.frm.timeline.refresh();
+				this.frm.timeline.refresh();
 				this.frm.assign_to.refresh();
 				this.frm.attachments.refresh();
 			}
 		});
 	}
 
-};
+});

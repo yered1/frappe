@@ -1,7 +1,7 @@
 // Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
+import './linked_with';
 
-frappe.provide("frappe.ui.form");
 frappe.ui.form.Toolbar = Class.extend({
 	init: function(opts) {
 		$.extend(this, opts);
@@ -153,13 +153,6 @@ frappe.ui.form.Toolbar = Class.extend({
 		this.page.add_menu_item(__("Reload"), function() {
 			me.frm.reload_doc();}, true);
 
-		// add to desktop
-		if(me.frm.meta.issingle) {
-			this.page.add_menu_item(__('Add to Desktop'), function () {
-				frappe.add_to_desktop(me.frm.doctype, me.frm.doctype);
-			}, true);
-		}
-
 		// delete
 		if((cint(me.frm.doc.docstatus) != 1) && !me.frm.doc.__islocal
 			&& frappe.model.can_delete(me.frm.doctype)) {
@@ -179,16 +172,6 @@ frappe.ui.form.Toolbar = Class.extend({
 				this.page.add_menu_item(__("Edit DocType"), function() {
 					frappe.set_route('Form', 'DocType', me.frm.doctype);
 				}, true);
-			}
-		}
-
-		// feedback
-		if(!this.frm.doc.__unsaved) {
-			if(is_submittable && docstatus == 1) {
-				this.page.add_menu_item(__("Request Feedback"), function() {
-					var feedback = new frappe.utils.Feedback();
-					feedback.manual_feedback_request(me.frm.doc);
-				}, true)
 			}
 		}
 
@@ -331,14 +314,16 @@ frappe.ui.form.Toolbar = Class.extend({
 		var p = this.frm.perm[0];
 		var has_workflow = this.has_workflow();
 
-		if(has_workflow) {
+		if (docstatus === 2 && p[AMEND]) {
+			this.page.set_secondary_action(__('Amend'), function () {
+				me.frm.amend_doc();
+			}, 'fa fa-pencil', true);
+		} else if (has_workflow) {
 			return;
-		} else if(docstatus==1 && p[CANCEL]) {
-			this.page.set_secondary_action(__('Cancel'), function() {
-				me.frm.savecancel(this) }, 'fa fa-ban-circle');
-		} else if(docstatus==2 && p[AMEND]) {
-			this.page.set_secondary_action(__('Amend'), function() {
-				me.frm.amend_doc() }, 'fa fa-pencil', true);
+		} else if (docstatus === 1 && p[CANCEL]) {
+			this.page.set_secondary_action(__('Cancel'), function () {
+				me.frm.savecancel(this);
+			}, 'fa fa-ban-circle');
 		}
 	},
 	add_update_button_on_dirty: function() {

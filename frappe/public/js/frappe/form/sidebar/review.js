@@ -21,12 +21,6 @@ frappe.ui.form.Review = class Review {
 		});
 	}
 	make_review_container() {
-		this.parent.append(`
-			<ul class="list-unstyled sidebar-menu">
-				<li class="h6 reviews-label">${__('Reviews')}</li>
-				<li class="review-list"></li>
-			</ul>
-		`);
 		this.review_list_wrapper = this.parent.find('.review-list');
 	}
 	add_review_button() {
@@ -85,9 +79,7 @@ frappe.ui.form.Review = class Review {
 				fieldname: 'to_user',
 				fieldtype: 'Autocomplete',
 				label: __('To User'),
-				reqd: 1,
 				options: user_options,
-				ignore_validation: 1,
 				description: __('Only users involved in the document are listed')
 			}, {
 				fieldname: 'review_type',

@@ -1,7 +1,7 @@
 // Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 // MIT License. See license.txt
 
-frappe.provide("frappe.ui.form");
+
 
 frappe.ui.form.save = function (frm, action, callback, btn) {
 	$(btn).prop("disabled", true);
@@ -204,6 +204,11 @@ frappe.ui.form.save = function (frm, action, callback, btn) {
 			always: function (r) {
 				$(btn).prop("disabled", false);
 				frappe.ui.form.is_saving = false;
+
+				if (!r.exc) {
+					frappe.show_alert({message: __('Saved'), indicator: 'green'});
+				}
+
 				if (r) {
 					var doc = r.docs && r.docs[0];
 					if (doc) {
@@ -228,8 +233,19 @@ frappe.ui.form.remove_old_form_route = () => {
 }
 
 frappe.ui.form.update_calling_link = (newdoc) => {
-	if (frappe._from_link && newdoc.doctype === frappe._from_link.df.options) {
-		var doc = frappe.get_doc(frappe._from_link.doctype, frappe._from_link.docname);
+	if (!frappe._from_link) return;
+	var doc = frappe.get_doc(frappe._from_link.doctype, frappe._from_link.docname);
+
+	let is_valid_doctype = () => {
+		if (frappe._from_link.df.fieldtype==='Link') {
+			return newdoc.doctype === frappe._from_link.df.options;
+		} else {
+			// dynamic link, type is dynamic
+			return newdoc.doctype === doc[frappe._from_link.df.options];
+		}
+	};
+
+	if (is_valid_doctype()) {
 		// set value
 		if (doc && doc.parentfield) {
 			//update values for child table

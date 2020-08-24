@@ -17,7 +17,6 @@ from werkzeug.local import LocalProxy
 from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Response
 from werkzeug.exceptions import NotFound, Forbidden
-from frappe.core.doctype.file.file import check_file_permission
 from frappe.website.render import render
 from frappe.utils import cint
 from six import text_type
@@ -164,7 +163,8 @@ def download_backup(path):
 def download_private_file(path):
 	"""Checks permissions and sends back private file"""
 	try:
-		check_file_permission(path)
+		_file = frappe.get_doc("File", {"file_url": path})
+		_file.is_downloadable()
 
 	except frappe.PermissionError:
 		raise Forbidden(_("You don't have permission to access this file"))
@@ -191,7 +191,13 @@ def send_private_file(path):
 		response = Response(wrap_file(frappe.local.request.environ, f), direct_passthrough=True)
 
 	# no need for content disposition and force download. let browser handle its opening.
-	# response.headers.add(b'Content-Disposition', b'attachment', filename=filename.encode("utf-8"))
+	# Except for those that can be injected with scripts.
+
+	extension = os.path.splitext(path)[1]
+	blacklist = ['.svg', '.html', '.htm', '.xml']
+
+	if extension.lower() in blacklist:
+		response.headers.add(b'Content-Disposition', b'attachment', filename=filename.encode("utf-8"))
 
 	response.mimetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
 

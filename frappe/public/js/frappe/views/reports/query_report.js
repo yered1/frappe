@@ -457,7 +457,6 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 				layout: 'fixed',
 				cellHeight: 33,
 				showTotalRow: this.raw_data.add_total_row,
-				direction: frappe.utils.is_rtl() ? 'rtl' : 'ltr',
 				hooks: {
 					columnTotal: frappe.utils.report_column_total
 				}
@@ -469,9 +468,6 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 			this.datatable = new DataTable(this.$report[0], datatable_options);
 		}
 
-		if (typeof this.report_settings.initial_depth == "number") {
-			this.datatable.rowmanager.setTreeDepth(this.report_settings.initial_depth);
-		}
 		if (this.report_settings.after_datatable_render) {
 			this.report_settings.after_datatable_render(this.datatable);
 		}
@@ -489,24 +485,20 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 		return options;
 	}
 
-	render_chart(options, height=200) {
-		Object.assign(options, {
-			height: height
-		});
-
+	render_chart(options) {
 		this.$chart.empty();
-		this.chart = new Chart(this.$chart[0], options);
+		this.chart = new frappe.Chart(this.$chart[0], options);
 		this.$chart.show();
 	}
 
 	get_possible_chart_options() {
 		const columns = this.raw_data.columns;
 		const rows =  this.raw_data.result.filter(value => Object.keys(value).length);
-		const first_row = Array.isArray(rows[0]) ? rows[0] : Object.values(rows[0]);
 		const has_total_row = this.raw_data.add_total_row;
+		const first_row = Array.isArray(rows[0]) ? rows[0] : Object.values(rows[0]);
 
 		const indices = first_row.reduce((accumulator, current_value, current_index) => {
-			if(!isNaN(Number(current_value))) {
+			if (Number.isFinite(current_value)) {
 				accumulator.push(current_index);
 			}
 			return accumulator;
@@ -546,12 +538,8 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 			const values = dialog.get_values(true);
 			let options = make_chart_options(values);
 
-			Object.assign(options, {
-				height: 150
-			});
-
 			wrapper.empty();
-			new Chart(wrapper[0], options);
+			new frappe.Chart(wrapper[0], options);
 			wrapper.find('.chart-container .title, .chart-container .sub-title').hide();
 			wrapper.show();
 		}
@@ -560,13 +548,13 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 			return fields.map((field) => {
 				return {label: field.label, value: field.fieldname};
 			});
-        }
+		}
 
 		const numeric_fields = columns.filter((col, i) => indices.includes(i));
 		const non_numeric_fields = columns.filter((col, i) => !indices.includes(i))
 
 		const dialog = new frappe.ui.Dialog({
-			title: __('Make Chart'),
+			title: __('Create Chart'),
 			fields: [
 				{
 					fieldname: 'y_field',
@@ -590,7 +578,7 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 					fieldname: 'chart_type',
 					label: 'Type of Chart',
 					fieldtype: 'Select',
-					options: ['Bar', 'Line', 'Percentage', 'Pie'],
+					options: ['Bar', 'Line', 'Percentage', 'Pie', 'Donut'],
 					default: 'Bar',
 					onchange: preview_chart
 				},
@@ -612,11 +600,14 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 					fieldtype: 'HTML',
 				}
 			],
-			primary_action_label: __('Make'),
+			primary_action_label: __('Create'),
 			primary_action: (values) => {
 				let options = make_chart_options(values);
 
-				options.title = __(`${this.report_name}: ${numeric_fields.filter((field) => field.fieldname == values.y_field)[0].label} vs ${non_numeric_fields.filter((field) => field.fieldname == values.x_field)[0].label}`);
+				let x_field_label = numeric_fields.filter((field) => field.fieldname == values.y_field)[0].label;
+				let y_field_label = non_numeric_fields.filter((field) => field.fieldname == values.x_field)[0].label;
+
+				options.title = __(`${this.report_name}: ${x_field_label} vs ${y_field_label}`);
 
 				this.render_chart(options);
 
@@ -798,9 +789,8 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 			print_settings: print_settings,
 			landscape: landscape,
 			filters: this.get_filter_values(),
-			data: this.get_data_for_print(),
+			data: custom_format ? this.data : this.get_data_for_print(),
 			columns: custom_format ? this.columns : this.get_columns_for_print(),
-			original_data: this.data,
 			report: this
 		});
 	}
@@ -812,7 +802,7 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 
 		const custom_format = this.report_settings.html_format || null;
 		const columns = custom_format ? this.columns : this.get_columns_for_print();
-		const data = this.get_data_for_print();
+		const data = custom_format ? this.data : this.get_data_for_print();
 		const applied_filters = this.get_filter_values();
 
 		const filters_html = this.get_filters_html_for_print();
@@ -821,7 +811,6 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 			subtitle: filters_html,
 			filters: applied_filters,
 			data: data,
-			original_data: this.data,
 			columns: columns,
 			report: this
 		});
@@ -926,7 +915,6 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 	}
 
 	get_data_for_print() {
-
 		if (!this.data.length) {
 			return [];
 		}
@@ -936,10 +924,12 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 				return this.data[index];
 			}
 		}).filter(Boolean);
+
 		let totalRow = this.datatable.bodyRenderer.getTotalRow().reduce((row, cell) => {
 			row[cell.column.id] = cell.content;
 			return row;
 		}, {});
+
 		rows.push(totalRow);
 		return rows;
 	}
@@ -1109,12 +1099,7 @@ frappe.views.QueryReport = class QueryReport extends frappe.views.BaseList {
 				}),
 				condition: () => frappe.model.can_set_user_permissions('Report'),
 				standard: true
-			},
-			{
-				label: __('Add to Desktop'),
-				action: () => frappe.add_to_desktop(this.report_name, null, this.report_name),
-				standard: true
-			},
+			}
 		];
 	}
 

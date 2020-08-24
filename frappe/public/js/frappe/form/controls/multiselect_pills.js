@@ -129,8 +129,7 @@ frappe.ui.form.ControlMultiSelectPills = frappe.ui.form.ControlAutocomplete.exte
 	get_data() {
 		let data;
 		if(this.df.get_data) {
-			let txt = this.$input.val();
-			data = this.df.get_data(txt);
+			data = this.df.get_data();
 			if (data && data.then) {
 				data.then((r) => {
 					this.set_data(r);

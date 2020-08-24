@@ -1,5 +1,4 @@
 import frappe
-import re
 
 def execute():
 	fields = frappe.db.sql("""
@@ -15,7 +14,7 @@ def execute():
 		update_column_table_map[field.TABLE_NAME].append("`{fieldname}`=COALESCE(`{fieldname}`, 0)".format(fieldname=field.COLUMN_NAME))
 
 	for table in frappe.db.get_tables():
-		if update_column_table_map.get(table) and frappe.db.exists("DocType", re.sub('^tab', '', table)):
+		if update_column_table_map.get(table):
 			frappe.db.sql("""UPDATE `{table}` SET {columns}"""
 				.format(table=table, columns=", ".join(update_column_table_map.get(table))))
 

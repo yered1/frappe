@@ -253,8 +253,6 @@ frappe.views.CommunicationComposer = Class.extend({
 			$.extend(last_edited_communication, {
 				sender: me.dialog.get_value("sender"),
 				recipients: me.dialog.get_value("recipients"),
-				cc: me.dialog.get_value("cc"),
-				bcc: me.dialog.get_value("bcc"),
 				subject: me.dialog.get_value("subject"),
 				content: me.dialog.get_value("content"),
 			});
@@ -267,8 +265,6 @@ frappe.views.CommunicationComposer = Class.extend({
 					me.dialog.set_value("sender", last_edited_communication.sender || "");
 					me.dialog.set_value("subject", last_edited_communication.subject || "");
 					me.dialog.set_value("recipients", last_edited_communication.recipients || "");
-					me.dialog.set_value("cc", last_edited_communication.cc || "");
-					me.dialog.set_value("bcc", last_edited_communication.bcc || "");
 					me.dialog.set_value("content", last_edited_communication.content || "");
 				}
 			}
@@ -363,33 +359,25 @@ frappe.views.CommunicationComposer = Class.extend({
 		var fields = this.dialog.fields_dict;
 		var attach = $(fields.select_attachments.wrapper);
 
-		var me = this
-		if (!me.attachments){
-			me.attachments = []
+		if (!this.attachments) {
+			this.attachments = [];
 		}
 
-		var args = {
-			args: {
-				from_form: 1,
-				folder:"Home/Attachments"
-			},
-			callback: function(attachment, r) { me.attachments.push(attachment); },
-			max_width: null,
-			max_height: null
+		let args = {
+			folder: 'Home/Attachments',
+			on_success: attachment => this.attachments.push(attachment)
 		};
 
-		if(me.frm) {
+		if(this.frm) {
 			args = {
-				args: (me.frm.attachments.get_args
-					? me.frm.attachments.get_args()
-					: { from_form: 1,folder:"Home/Attachments" }),
-				callback: function (attachment, r) {
-					me.frm.attachments.attachment_uploaded(attachment, r)
-				},
-				max_width: me.frm.cscript ? me.frm.cscript.attachment_max_width : null,
-				max_height: me.frm.cscript ? me.frm.cscript.attachment_max_height : null
+				doctype: this.frm.doctype,
+				docname: this.frm.docname,
+				folder: 'Home/Attachments',
+				on_success: attachment => {
+					this.frm.attachments.attachment_uploaded(attachment);
+					this.render_attach();
+				}
 			}
-
 		}
 
 		$("<h6 class='text-muted add-attachment' style='margin-top: 12px; cursor:pointer;'>"
@@ -397,11 +385,10 @@ frappe.views.CommunicationComposer = Class.extend({
 			<p class='add-more-attachments'>\
 			<a class='text-muted small'><i class='octicon octicon-plus' style='font-size: 12px'></i> "
 			+__("Add Attachment")+"</a></p>").appendTo(attach.empty())
-		attach.find(".add-more-attachments a").on('click',this,function() {
-			me.upload = frappe.ui.get_upload_dialog(args);
-		})
-		me.render_attach()
-
+		attach
+			.find(".add-more-attachments a")
+			.on('click',() => new frappe.ui.FileUploader(args));
+		this.render_attach();
 	},
 	render_attach:function(){
 		var fields = this.dialog.fields_dict;
@@ -463,17 +450,7 @@ frappe.views.CommunicationComposer = Class.extend({
 
 
 		if(form_values.attach_document_print) {
-			if (cur_frm.print_preview.is_old_style(form_values.select_print_format || "")) {
-				cur_frm.print_preview.with_old_style({
-					format: form_values.select_print_format,
-					callback: function(print_html) {
-						me.send_email(btn, form_values, selected_attachments, print_html);
-					}
-				});
-			} else {
-				me.send_email(btn, form_values, selected_attachments, null, form_values.select_print_format || "");
-			}
-
+			me.send_email(btn, form_values, selected_attachments, null, form_values.select_print_format || "");
 		} else {
 			me.send_email(btn, form_values, selected_attachments);
 		}
@@ -562,6 +539,7 @@ frappe.views.CommunicationComposer = Class.extend({
 				print_format: print_format,
 				sender: form_values.sender,
 				sender_full_name: form_values.sender?frappe.user.full_name():undefined,
+				email_template: form_values.email_template,
 				attachments: selected_attachments,
 				_lang : me.lang_code,
 				read_receipt:form_values.send_read_receipt,

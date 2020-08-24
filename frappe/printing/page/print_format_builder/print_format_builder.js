@@ -783,6 +783,8 @@ frappe.PrintFormatBuilder = Class.extend({
 				fieldname: "format_data",
 				value: JSON.stringify(data),
 			},
+			freeze: true,
+			btn: this.page.btn_primary,
 			callback: function(r) {
 				me.print_format = r.message;
 				frappe.show_alert({message: __("Saved"), indicator: 'green'});

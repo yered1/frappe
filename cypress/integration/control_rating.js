@@ -1,21 +1,14 @@
-context('Control Rating', () => {
-	before(() => {
-		cy.login();
-		cy.visit('/desk#workspace/Website');
+context('Rating Control', () => {
+	beforeEach(() => {
+		cy.login('Administrator', 'qwe');
 	});
 
-	function get_dialog_with_rating() {
-		return cy.dialog({
-			title: 'Rating',
-			fields: [{
-				'fieldname': 'rate',
-				'fieldtype': 'Rating',
-			}]
-		});
-	}
-
 	it('click on the star rating to record value', () => {
-		get_dialog_with_rating().as('dialog');
+		cy.visit('/desk');
+		cy.dialog('Rating', [{
+			'fieldname': 'rate',
+			'fieldtype': 'Rating',
+		}]).as('dialog');
 
 		cy.get('div.rating')
 			.children('i.fa')
@@ -25,13 +18,15 @@ context('Control Rating', () => {
 		cy.get('@dialog').then(dialog => {
 			var value = dialog.get_value('rate');
 			expect(value).to.equal(1);
-			dialog.hide();
 		});
 	});
 
 	it('hover on the star', () => {
-		get_dialog_with_rating();
-
+		cy.visit('/desk');
+		cy.dialog('Rating', [{
+			'fieldname': 'rate',
+			'fieldtype': 'Rating',
+		}]);
 		cy.get('div.rating')
 			.children('i.fa')
 			.first()

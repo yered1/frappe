@@ -15,7 +15,6 @@ import frappe.desk.reportview
 from frappe.permissions import get_role_permissions
 from six import string_types, iteritems
 from datetime import timedelta
-from frappe.utils.file_manager import get_file
 from frappe.utils import gzip_decompress
 
 def get_report_doc(report_name):
@@ -259,22 +258,19 @@ def get_prepared_report_result(report, filters, dn="", user=None):
 		try:
 			# Prepared Report data is stored in a GZip compressed JSON file
 			attached_file_name = frappe.db.get_value("File", {"attached_to_doctype": doc.doctype, "attached_to_name":doc.name}, "name")
-			compressed_content = get_file(attached_file_name)[1]
+			attached_file = frappe.get_doc('File', attached_file_name)
+			compressed_content = attached_file.get_content()
 			uncompressed_content = gzip_decompress(compressed_content)
 			data = json.loads(uncompressed_content)
 			if data:
 				columns = json.loads(doc.columns) if doc.columns else data[0]
-
 				for column in columns:
-					if isinstance(column, dict):
-						column["label"] = _(column["label"])
-
+					column["label"] = _(column["label"])
 				latest_report_data = {
 					"columns": columns,
 					"result": data
 				}
 		except Exception:
-			frappe.log_error(frappe.get_traceback())
 			frappe.delete_doc("Prepared Report", doc.name)
 			frappe.db.commit()
 			doc = None
@@ -384,8 +380,6 @@ def add_total_row(result, columns, meta = None):
 			options = col.get("options")
 
 		for row in result:
-			if i >= len(row): continue
-
 			cell = row.get(fieldname) if isinstance(row, dict) else row[i]
 			if fieldtype in ["Currency", "Int", "Float", "Percent"] and flt(cell):
 				total_row[i] = flt(total_row[i]) + flt(cell)

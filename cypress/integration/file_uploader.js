@@ -1,7 +1,7 @@
 context('FileUploader', () => {
 	before(() => {
-		cy.login();
-		cy.visit('/desk#workspace/Website');
+		cy.login('Administrator', 'qwe');
+		cy.visit('/desk');
 	});
 
 	function open_upload_dialog() {
@@ -50,7 +50,7 @@ context('FileUploader', () => {
 		open_upload_dialog();
 
 		cy.get_open_dialog().find('a:contains("web link")').click();
-		cy.get_open_dialog().find('.file-web-link input').type('https://github.com', { delay: 100, force: true });
+		cy.get_open_dialog().find('.file-web-link input').type('https://github.com');
 		cy.server();
 		cy.route('POST', '/api/method/upload_file').as('upload_file');
 		cy.get_open_dialog().find('.btn-primary').click();
